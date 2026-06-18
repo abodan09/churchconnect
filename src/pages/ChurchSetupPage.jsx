@@ -37,6 +37,7 @@ export default function ChurchSetupPage() {
   const [step, setStep] = useState(1);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState("");
   const [form, setForm] = useState({
     church_name: "",
     logo_url: "",
@@ -71,11 +72,20 @@ export default function ChurchSetupPage() {
   async function handleFinish() {
     if (!form.church_name.trim()) return;
     setSaving(true);
+    setError("");
     try {
+      // New users register with role "member" by default, but creating
+      // ChurchSettings requires "super_admin". Promote this user first —
+      // whoever runs setup IS the church administrator.
+      const me = await base44.auth.me();
+      if (me?.id && me?.data?.role !== "super_admin") {
+        await base44.entities.User.update(me.id, { role: "super_admin" });
+      }
       await saveSettings(form);
       navigate("/");
     } catch (err) {
       console.error("Setup failed:", err);
+      setError(err?.message || "Setup failed. Please try again.");
     } finally {
       setSaving(false);
     }
@@ -165,6 +175,11 @@ export default function ChurchSetupPage() {
                 <div className="flex justify-between"><span className="text-muted-foreground">Language</span><span className="font-medium">{LANGUAGES.find(l => l.code === form.language)?.label}</span></div>
                 <div className="flex justify-between"><span className="text-muted-foreground">Currency</span><span className="font-medium">{CURRENCIES.find(c => c.code === form.currency_code)?.label}</span></div>
               </div>
+              {error && (
+                <div className="p-3 rounded-lg bg-destructive/10 text-destructive text-sm">
+                  {error}
+                </div>
+              )}
               <div className="flex gap-3">
                 <Button variant="outline" className="flex-1" onClick={() => setStep(2)}>← Back</Button>
                 <Button className="flex-1 bg-primary text-primary-foreground" onClick={handleFinish} disabled={saving}>
