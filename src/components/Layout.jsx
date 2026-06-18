@@ -73,8 +73,10 @@ export default function Layout() {
   }, [settings, settingsLoading, navigate]);
 
   useEffect(() => {
-    base44.auth.me().then(setUser).catch(() => {});
-  }, []);
+    base44.auth.me()
+      .then(setUser)
+      .catch(() => navigate("/login", { replace: true }));
+  }, [navigate]);
 
   const rawRole = user?.role || "member";
   // Map base44 built-in roles to app roles

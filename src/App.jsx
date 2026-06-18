@@ -5,6 +5,7 @@ import { BrowserRouter as Router, Route, Routes, Navigate } from 'react-router-d
 import PageNotFound from './lib/PageNotFound';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
+import ProtectedRoute from '@/components/ProtectedRoute';
 import Layout from './components/Layout';
 import Dashboard from './pages/Dashboard';
 import MemberPortal from './pages/MemberPortal';
@@ -55,20 +56,22 @@ const AuthenticatedApp = () => {
         <Route path="/register" element={<Register />} />
         <Route path="/forgot-password" element={<ForgotPassword />} />
         <Route path="/reset-password" element={<ResetPassword />} />
-        <Route element={<Layout />}>
-          <Route path="/" element={<Dashboard />} />
-          <Route path="/portal" element={<MemberPortal />} />
-          <Route path="/members" element={<Members />} />
-          <Route path="/giving" element={<GivingPage />} />
-          <Route path="/expenditures" element={<ExpenditurePage />} />
-          <Route path="/properties" element={<PropertiesPage />} />
-          <Route path="/departments" element={<DepartmentsPage />} />
-          <Route path="/sermons" element={<SermonsPage />} />
-          <Route path="/events" element={<EventsPage />} />
-          <Route path="/attendance" element={<AttendancePage />} />
-          <Route path="/reports" element={<FinancialReportsPage />} />
-          <Route path="/attendance-analytics" element={<AttendanceAnalyticsPage />} />
-          <Route path="/church-settings" element={<ChurchSettingsPage />} />
+        <Route element={<ProtectedRoute unauthenticatedElement={<Navigate to="/login" replace />} />}>
+          <Route element={<Layout />}>
+            <Route path="/" element={<Dashboard />} />
+            <Route path="/portal" element={<MemberPortal />} />
+            <Route path="/members" element={<Members />} />
+            <Route path="/giving" element={<GivingPage />} />
+            <Route path="/expenditures" element={<ExpenditurePage />} />
+            <Route path="/properties" element={<PropertiesPage />} />
+            <Route path="/departments" element={<DepartmentsPage />} />
+            <Route path="/sermons" element={<SermonsPage />} />
+            <Route path="/events" element={<EventsPage />} />
+            <Route path="/attendance" element={<AttendancePage />} />
+            <Route path="/reports" element={<FinancialReportsPage />} />
+            <Route path="/attendance-analytics" element={<AttendanceAnalyticsPage />} />
+            <Route path="/church-settings" element={<ChurchSettingsPage />} />
+          </Route>
         </Route>
         <Route path="*" element={<PageNotFound />} />
       </Routes>
