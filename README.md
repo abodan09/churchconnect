@@ -1,39 +1,55 @@
-**Welcome to your Base44 project** 
+# ChurchConnect
 
-**About**
+A self-hosted, AI-enhanced church management platform built with React + Vite + Tailwind.
 
-View and Edit  your app on [Base44.com](http://Base44.com) 
+## Features
 
-This project contains everything you need to run your app locally.
+- Member management with role-based access
+- Giving & expenditure tracking with financial reports
+- Events, attendance, and sermon management
+- Department and property management
+- AI assistant with 4 church-specific agent personas (pastoral, finance, events, communications)
 
-**Edit the code in your local development environment**
+## Stack
 
-Any change pushed to the repo will also be reflected in the Base44 Builder.
+- **Frontend:** React 18 + Vite + Tailwind CSS + shadcn/ui
+- **Backend:** Base44 SDK (auth + entity CRUD)
+- **AI:** Anthropic Claude (`claude-sonnet-4-6`) via Vercel serverless functions
+- **Deployment:** Vercel
 
-**Prerequisites:** 
+## Getting Started
 
-1. Clone the repository using the project's Git URL 
-2. Navigate to the project directory
-3. Install dependencies: `npm install`
-4. Create an `.env.local` file and set the right environment variables
-
-```
-VITE_BASE44_APP_ID=your_app_id
-VITE_BASE44_APP_BASE_URL=your_backend_url
-
-e.g.
-VITE_BASE44_APP_ID=cbef744a8545c389ef439ea6
-VITE_BASE44_APP_BASE_URL=https://my-to-do-list-81bfaad7.base44.app
+```bash
+npm install
+npm run dev
 ```
 
-Run the app: `npm run dev`
+Create a `.env` file at the project root:
 
-**Publish your changes**
+```
+VITE_BASE44_APP_BASE_URL=https://api.base44.app
+```
 
-Open [Base44.com](http://Base44.com) and click on Publish.
+## Deployment
 
-**Docs & Support**
+```bash
+vercel --prod
+```
 
-Documentation: [https://docs.base44.com/Integrations/Using-GitHub](https://docs.base44.com/Integrations/Using-GitHub)
+Required Vercel environment variables:
 
-Support: [https://app.base44.com/support](https://app.base44.com/support)
+```
+VITE_BASE44_APP_BASE_URL=https://api.base44.app
+ANTHROPIC_API_KEY=sk-ant-...
+```
+
+## Roles
+
+| Role | Access |
+|------|--------|
+| `super_admin` | Full access |
+| `pastor_admin` | All except Departments & Church Settings |
+| `finance_officer` | Dashboard, Giving, Expenditures, Reports |
+| `department_head` | Dashboard, Events, Attendance, Sermons |
+| `data_entry_staff` | Dashboard, Members, Giving, Attendance |
+| `member` | Member Portal only |
