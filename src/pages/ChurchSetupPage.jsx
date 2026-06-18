@@ -30,6 +30,15 @@ const CURRENCIES = [
   { code: "CHF", symbol: "CHF", label: "Swiss Franc (CHF)" },
 ];
 
+const ROLES = [
+  { value: "super_admin", label: "Super Admin", description: "Full access to everything — church owner / IT administrator" },
+  { value: "pastor_admin", label: "Pastor / Admin", description: "All features except Departments & Church Settings" },
+  { value: "finance_officer", label: "Finance Officer", description: "Dashboard, Giving, Expenditures, Reports" },
+  { value: "department_head", label: "Department Head", description: "Dashboard, Events, Attendance, Sermons" },
+  { value: "data_entry_staff", label: "Data Entry Staff", description: "Dashboard, Members, Giving, Attendance" },
+  { value: "member", label: "Member", description: "Member Portal only" },
+];
+
 export default function ChurchSetupPage() {
   const { saveSettings } = useChurchSettings();
   const navigate = useNavigate();
@@ -44,6 +53,7 @@ export default function ChurchSetupPage() {
     language: "en",
     currency_code: "EUR",
     currency_symbol: "€",
+    role: "super_admin",
   });
 
   function set(field, value) {
@@ -74,14 +84,14 @@ export default function ChurchSetupPage() {
     setSaving(true);
     setError("");
     try {
-      // New users register with role "member" by default, but creating
-      // ChurchSettings requires "super_admin". Promote this user first —
-      // whoever runs setup IS the church administrator.
-      const me = await base44.auth.me();
-      if (me?.data?.role !== "super_admin") {
-        await base44.auth.updateMe({ data: { role: "super_admin" } });
+      // Best-effort role assignment — doesn't block setup if it fails
+      try {
+        await base44.auth.updateMe({ data: { role: form.role } });
+      } catch (roleErr) {
+        console.warn("Role assignment skipped:", roleErr?.message);
       }
-      await saveSettings(form);
+      const { role: _role, ...settingsData } = form;
+      await saveSettings(settingsData);
       navigate("/");
     } catch (err) {
       console.error("Setup failed:", err);
@@ -91,7 +101,8 @@ export default function ChurchSetupPage() {
     }
   }
 
-  const steps = ["Church Identity", "Preferences", "Confirm"];
+  const steps = ["Church Identity", "Preferences", "Your Role", "Confirm"];
+  const selectedRole = ROLES.find(r => r.value === form.role);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-secondary/40 to-background flex items-center justify-center p-4">
@@ -168,12 +179,37 @@ export default function ChurchSetupPage() {
 
           {step === 3 && (
             <div className="space-y-5">
+              <h2 className="font-semibold text-lg">Your Role</h2>
+              <p className="text-sm text-muted-foreground">Select the role that matches your responsibility in the church.</p>
+              <div className="space-y-2">
+                {ROLES.map(r => (
+                  <button
+                    key={r.value}
+                    type="button"
+                    onClick={() => set("role", r.value)}
+                    className={`w-full text-left px-4 py-3 rounded-xl border transition-colors ${form.role === r.value ? "border-primary bg-primary/5" : "border-border hover:border-primary/50"}`}
+                  >
+                    <div className="font-medium text-sm">{r.label}</div>
+                    <div className="text-xs text-muted-foreground mt-0.5">{r.description}</div>
+                  </button>
+                ))}
+              </div>
+              <div className="flex gap-3">
+                <Button variant="outline" className="flex-1" onClick={() => setStep(2)}>← Back</Button>
+                <Button className="flex-1" onClick={() => setStep(4)}>Next →</Button>
+              </div>
+            </div>
+          )}
+
+          {step === 4 && (
+            <div className="space-y-5">
               <h2 className="font-semibold text-lg">Confirm Setup</h2>
               <div className="space-y-3 bg-muted/40 rounded-xl p-4 text-sm">
                 {form.logo_url && <img src={form.logo_url} alt="logo" className="w-16 h-16 rounded-xl object-cover border border-border mb-2" />}
                 <div className="flex justify-between"><span className="text-muted-foreground">Church Name</span><span className="font-medium">{form.church_name}</span></div>
                 <div className="flex justify-between"><span className="text-muted-foreground">Language</span><span className="font-medium">{LANGUAGES.find(l => l.code === form.language)?.label}</span></div>
                 <div className="flex justify-between"><span className="text-muted-foreground">Currency</span><span className="font-medium">{CURRENCIES.find(c => c.code === form.currency_code)?.label}</span></div>
+                <div className="flex justify-between"><span className="text-muted-foreground">Your Role</span><span className="font-medium">{selectedRole?.label}</span></div>
               </div>
               {error && (
                 <div className="p-3 rounded-lg bg-destructive/10 text-destructive text-sm">
@@ -181,7 +217,7 @@ export default function ChurchSetupPage() {
                 </div>
               )}
               <div className="flex gap-3">
-                <Button variant="outline" className="flex-1" onClick={() => setStep(2)}>← Back</Button>
+                <Button variant="outline" className="flex-1" onClick={() => setStep(3)}>← Back</Button>
                 <Button className="flex-1 bg-primary text-primary-foreground" onClick={handleFinish} disabled={saving}>
                   {saving ? "Saving..." : "Finish Setup ✓"}
                 </Button>
