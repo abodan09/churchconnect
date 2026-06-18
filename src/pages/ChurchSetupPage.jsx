@@ -39,6 +39,19 @@ const ROLES = [
   { value: "member", label: "Member", description: "Member Portal only" },
 ];
 
+const LOGO_MIN_PX = 100;
+const LOGO_MAX_PX = 4000;
+const LOGO_MAX_BYTES = 5 * 1024 * 1024;
+
+function getImageDimensions(objectUrl) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve({ w: img.naturalWidth, h: img.naturalHeight });
+    img.onerror = () => reject(new Error("Could not read image dimensions."));
+    img.src = objectUrl;
+  });
+}
+
 export default function ChurchSetupPage() {
   const { saveSettings } = useChurchSettings();
   const navigate = useNavigate();
@@ -63,24 +76,43 @@ export default function ChurchSetupPage() {
     setForm(prev => ({ ...prev, [field]: value }));
   }
 
-  function handleLogoUpload(e) {
+  async function handleLogoUpload(e) {
     const file = e.target.files[0];
+    e.target.value = "";
     if (!file) return;
+
     if (!file.type.startsWith("image/")) {
       setLogoError(`"${file.name}" is not an image. Accepted formats: JPG, PNG, GIF, SVG, WebP.`);
-      e.target.value = "";
       return;
     }
-    if (file.size > 5 * 1024 * 1024) {
+    if (file.size > LOGO_MAX_BYTES) {
       const sizeMB = (file.size / 1024 / 1024).toFixed(1);
-      setLogoError(`File is ${sizeMB} MB — must be under 5 MB. Try compressing it first.`);
-      e.target.value = "";
+      setLogoError(`File is ${sizeMB} MB — must be under 5 MB. Try compressing it or choosing a smaller version.`);
       return;
     }
+
+    const objectUrl = URL.createObjectURL(file);
+    try {
+      const { w, h } = await getImageDimensions(objectUrl);
+      if (w < LOGO_MIN_PX || h < LOGO_MIN_PX) {
+        URL.revokeObjectURL(objectUrl);
+        setLogoError(`Image is too small (${w} × ${h} px). Minimum is ${LOGO_MIN_PX} × ${LOGO_MIN_PX} px — a larger image will look sharper.`);
+        return;
+      }
+      if (w > LOGO_MAX_PX || h > LOGO_MAX_PX) {
+        URL.revokeObjectURL(objectUrl);
+        setLogoError(`Image is too large (${w} × ${h} px). Maximum is ${LOGO_MAX_PX} × ${LOGO_MAX_PX} px — please resize it down.`);
+        return;
+      }
+    } catch {
+      URL.revokeObjectURL(objectUrl);
+      setLogoError("Could not read this image file. Try a different file.");
+      return;
+    }
+
     setLogoError("");
     setPreviewFile(file);
-    setPreviewUrl(URL.createObjectURL(file));
-    e.target.value = "";
+    setPreviewUrl(objectUrl);
   }
 
   async function handleConfirmLogo() {
@@ -195,7 +227,7 @@ export default function ChurchSetupPage() {
                     <input type="file" accept="image/*" className="hidden" onChange={handleLogoUpload} disabled={uploading} />
                   </label>
                 </div>
-                <p className="text-xs text-muted-foreground mt-2">JPG, PNG, GIF, SVG, WebP · Max 5 MB · You can add this later too</p>
+                <p className="text-xs text-muted-foreground mt-2">JPG, PNG, GIF, SVG, WebP · Max 5 MB · 100 – 4000 px per side · You can add this later too</p>
                 {logoError && (
                   <p className="text-xs text-destructive mt-1.5 flex items-start gap-1">
                     <span>⚠</span> {logoError}
