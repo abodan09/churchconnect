@@ -47,6 +47,8 @@ export default function ChurchSetupPage() {
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState("");
+  const [previewFile, setPreviewFile] = useState(null);
+  const [previewUrl, setPreviewUrl] = useState("");
   const [form, setForm] = useState({
     church_name: "",
     logo_url: "",
@@ -60,18 +62,39 @@ export default function ChurchSetupPage() {
     setForm(prev => ({ ...prev, [field]: value }));
   }
 
-  async function handleLogoUpload(e) {
+  function handleLogoUpload(e) {
     const file = e.target.files[0];
     if (!file) return;
+    if (!file.type.startsWith("image/")) { setError("Please upload an image file."); return; }
+    if (file.size > 5 * 1024 * 1024) { setError("Image must be under 5 MB."); return; }
+    setError("");
+    setPreviewFile(file);
+    setPreviewUrl(URL.createObjectURL(file));
+    e.target.value = "";
+  }
+
+  async function handleConfirmLogo() {
+    if (!previewFile) return;
     setUploading(true);
+    setError("");
     try {
-      const { file_url } = await base44.integrations.Core.UploadFile({ file });
+      const { file_url } = await base44.integrations.Core.UploadFile({ file: previewFile });
       set("logo_url", file_url);
+      URL.revokeObjectURL(previewUrl);
+      setPreviewFile(null);
+      setPreviewUrl("");
     } catch (err) {
       console.error("Logo upload failed:", err);
+      setError("Logo upload failed. Please try again.");
     } finally {
       setUploading(false);
     }
+  }
+
+  function handleCancelLogo() {
+    URL.revokeObjectURL(previewUrl);
+    setPreviewFile(null);
+    setPreviewUrl("");
   }
 
   function handleCurrencyChange(code) {
@@ -141,10 +164,20 @@ export default function ChurchSetupPage() {
               <div>
                 <Label>Church Logo (optional)</Label>
                 <div className="mt-1 flex items-center gap-4">
-                  {form.logo_url && <img src={form.logo_url} alt="logo" className="w-14 h-14 rounded-xl object-cover border border-border" />}
+                  {form.logo_url && (
+                    <div className="relative group">
+                      <img src={form.logo_url} alt="logo" className="w-14 h-14 rounded-xl object-cover border border-border" />
+                      <button
+                        type="button"
+                        onClick={() => set("logo_url", "")}
+                        className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-destructive text-white text-xs flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                        title="Remove logo"
+                      >✕</button>
+                    </div>
+                  )}
                   <label className="flex items-center gap-2 cursor-pointer px-4 py-2 rounded-lg border border-dashed border-input hover:border-primary transition-colors text-sm text-muted-foreground">
                     <Upload className="w-4 h-4" />
-                    {uploading ? "Uploading..." : "Upload from device"}
+                    {uploading ? "Uploading..." : form.logo_url ? "Change logo" : "Upload from device"}
                     <input type="file" accept="image/*" className="hidden" onChange={handleLogoUpload} disabled={uploading} />
                   </label>
                 </div>
@@ -226,6 +259,32 @@ export default function ChurchSetupPage() {
           )}
         </div>
       </div>
+
+      {/* Logo preview confirmation overlay */}
+      {previewFile && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl p-6 max-w-sm w-full space-y-5">
+            <h3 className="font-semibold text-lg text-center">Confirm Logo</h3>
+            <div className="flex justify-center">
+              <img
+                src={previewUrl}
+                alt="Logo preview"
+                className="max-h-52 max-w-full rounded-xl object-contain border border-border"
+              />
+            </div>
+            <p className="text-sm text-muted-foreground text-center">Does this look right for your church logo?</p>
+            {error && <p className="text-sm text-destructive text-center">{error}</p>}
+            <div className="flex gap-3">
+              <Button variant="outline" className="flex-1" onClick={handleCancelLogo} disabled={uploading}>
+                Choose Different
+              </Button>
+              <Button className="flex-1" onClick={handleConfirmLogo} disabled={uploading}>
+                {uploading ? "Uploading..." : "Use This Logo"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
