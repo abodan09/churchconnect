@@ -1,0 +1,133 @@
+{
+  "name": "Property",
+  "type": "object",
+  "properties": {
+    "type": {
+      "type": "string",
+      "title": "Type",
+      "enum": [
+        "building",
+        "land",
+        "vehicle",
+        "equipment",
+        "furniture",
+        "electronics",
+        "other"
+      ]
+    },
+    "name": {
+      "type": "string",
+      "title": "Name"
+    },
+    "description": {
+      "type": "string",
+      "title": "Description"
+    },
+    "location_or_serial": {
+      "type": "string",
+      "title": "Location / Serial Number"
+    },
+    "purchase_date": {
+      "type": "string",
+      "format": "date",
+      "title": "Purchase Date"
+    },
+    "purchase_value": {
+      "type": "number",
+      "title": "Purchase Value"
+    },
+    "current_condition": {
+      "type": "string",
+      "title": "Current Condition",
+      "enum": [
+        "excellent",
+        "good",
+        "fair",
+        "poor",
+        "decommissioned"
+      ]
+    },
+    "assigned_department_id": {
+      "type": "string",
+      "title": "Assigned Department ID"
+    },
+    "assigned_department_name": {
+      "type": "string",
+      "title": "Assigned Department"
+    },
+    "maintenance_notes": {
+      "type": "string",
+      "title": "Maintenance Notes"
+    },
+    "photo_url": {
+      "type": "string",
+      "title": "Photo URL"
+    }
+  },
+  "required": [
+    "type",
+    "name"
+  ],
+  "rls": {
+    "create": {
+      "user_condition": {
+        "role": {
+          "$in": [
+            "super_admin",
+            "pastor_admin",
+            "finance_officer"
+          ]
+        }
+      }
+    },
+    "read": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": {
+              "$in": [
+                "super_admin",
+                "pastor_admin",
+                "finance_officer"
+              ]
+            }
+          }
+        },
+        {
+          "$and": [
+            {
+              "user_condition": {
+                "role": "department_head"
+              }
+            },
+            {
+              "data.assigned_department_id": "{{user.data.department_id}}"
+            }
+          ]
+        }
+      ]
+    },
+    "update": {
+      "user_condition": {
+        "role": {
+          "$in": [
+            "super_admin",
+            "pastor_admin",
+            "finance_officer"
+          ]
+        }
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": {
+          "$in": [
+            "super_admin",
+            "pastor_admin",
+            "finance_officer"
+          ]
+        }
+      }
+    }
+  }
+}

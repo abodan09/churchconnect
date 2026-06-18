@@ -1,0 +1,152 @@
+{
+  "name": "Expenditure",
+  "type": "object",
+  "properties": {
+    "date": {
+      "type": "string",
+      "format": "date",
+      "title": "Date"
+    },
+    "category": {
+      "type": "string",
+      "title": "Category",
+      "enum": [
+        "utilities",
+        "salaries",
+        "maintenance",
+        "outreach",
+        "events",
+        "equipment",
+        "welfare",
+        "administration",
+        "other"
+      ]
+    },
+    "description": {
+      "type": "string",
+      "title": "Description"
+    },
+    "amount": {
+      "type": "number",
+      "title": "Amount"
+    },
+    "department_id": {
+      "type": "string",
+      "title": "Department ID"
+    },
+    "department_name": {
+      "type": "string",
+      "title": "Department"
+    },
+    "approval_status": {
+      "type": "string",
+      "title": "Approval Status",
+      "enum": [
+        "pending",
+        "approved",
+        "rejected"
+      ],
+      "default": "pending"
+    },
+    "approved_by": {
+      "type": "string",
+      "title": "Approved By"
+    },
+    "approved_date": {
+      "type": "string",
+      "format": "date",
+      "title": "Approved Date"
+    },
+    "receipt_url": {
+      "type": "string",
+      "title": "Receipt URL"
+    },
+    "notes": {
+      "type": "string",
+      "title": "Notes"
+    }
+  },
+  "required": [
+    "date",
+    "category",
+    "description",
+    "amount"
+  ],
+  "rls": {
+    "create": {
+      "user_condition": {
+        "role": {
+          "$in": [
+            "super_admin",
+            "pastor_admin",
+            "finance_officer",
+            "department_head"
+          ]
+        }
+      }
+    },
+    "read": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": {
+              "$in": [
+                "super_admin",
+                "pastor_admin",
+                "finance_officer"
+              ]
+            }
+          }
+        },
+        {
+          "$and": [
+            {
+              "user_condition": {
+                "role": "department_head"
+              }
+            },
+            {
+              "data.department_id": "{{user.data.department_id}}"
+            }
+          ]
+        }
+      ]
+    },
+    "update": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": {
+              "$in": [
+                "super_admin",
+                "pastor_admin",
+                "finance_officer"
+              ]
+            }
+          }
+        },
+        {
+          "$and": [
+            {
+              "created_by_id": "{{user.id}}"
+            },
+            {
+              "data.approval_status": "pending"
+            }
+          ]
+        }
+      ]
+    },
+    "delete": {
+      "user_condition": {
+        "role": {
+          "$in": [
+            "super_admin",
+            "pastor_admin",
+            "finance_officer"
+          ]
+        }
+      }
+    }
+  }
+}

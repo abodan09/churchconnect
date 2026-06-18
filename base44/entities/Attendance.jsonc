@@ -1,0 +1,106 @@
+{
+  "name": "Attendance",
+  "type": "object",
+  "properties": {
+    "event_id": {
+      "type": "string",
+      "title": "Event ID"
+    },
+    "event_name": {
+      "type": "string",
+      "title": "Event"
+    },
+    "event_date": {
+      "type": "string",
+      "title": "Event Date"
+    },
+    "member_id": {
+      "type": "string",
+      "title": "Member ID"
+    },
+    "member_name": {
+      "type": "string",
+      "title": "Member Name"
+    },
+    "department_id": {
+      "type": "string",
+      "title": "Department ID"
+    },
+    "department_name": {
+      "type": "string",
+      "title": "Department"
+    },
+    "check_in_time": {
+      "type": "string",
+      "title": "Check-in Time"
+    },
+    "status": {
+      "type": "string",
+      "title": "Status",
+      "enum": [
+        "present",
+        "late",
+        "excused"
+      ],
+      "default": "present"
+    },
+    "checked_in_by": {
+      "type": "string",
+      "title": "Checked In By"
+    },
+    "notes": {
+      "type": "string",
+      "title": "Notes"
+    }
+  },
+  "required": [
+    "event_id",
+    "member_id"
+  ],
+  "rls": {
+    "create": {
+      "user_condition": {
+        "role": {
+          "$in": [
+            "super_admin",
+            "pastor_admin",
+            "data_entry_staff",
+            "department_head"
+          ]
+        }
+      }
+    },
+    "read": {
+      "user_condition": {
+        "role": {
+          "$in": [
+            "super_admin",
+            "pastor_admin",
+            "data_entry_staff"
+          ]
+        }
+      }
+    },
+    "update": {
+      "user_condition": {
+        "role": {
+          "$in": [
+            "super_admin",
+            "pastor_admin",
+            "data_entry_staff"
+          ]
+        }
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": {
+          "$in": [
+            "super_admin",
+            "pastor_admin"
+          ]
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,113 @@
+{
+  "name": "Giving",
+  "type": "object",
+  "properties": {
+    "member_id": {
+      "type": "string",
+      "title": "Member ID"
+    },
+    "member_name": {
+      "type": "string",
+      "title": "Member Name"
+    },
+    "date": {
+      "type": "string",
+      "format": "date",
+      "title": "Date"
+    },
+    "amount": {
+      "type": "number",
+      "title": "Amount"
+    },
+    "type": {
+      "type": "string",
+      "title": "Type",
+      "enum": [
+        "tithe",
+        "offering",
+        "special_offering",
+        "thanksgiving",
+        "building_fund"
+      ],
+      "default": "tithe"
+    },
+    "payment_method": {
+      "type": "string",
+      "title": "Payment Method",
+      "enum": [
+        "cash",
+        "bank_transfer",
+        "mobile_money",
+        "cheque"
+      ],
+      "default": "cash"
+    },
+    "service_or_event": {
+      "type": "string",
+      "title": "Service / Event"
+    },
+    "notes": {
+      "type": "string",
+      "title": "Notes"
+    },
+    "recorded_by": {
+      "type": "string",
+      "title": "Recorded By"
+    }
+  },
+  "required": [
+    "member_id",
+    "date",
+    "amount",
+    "type"
+  ],
+  "rls": {
+    "create": {
+      "user_condition": {
+        "role": {
+          "$in": [
+            "super_admin",
+            "pastor_admin",
+            "finance_officer",
+            "data_entry_staff"
+          ]
+        }
+      }
+    },
+    "read": {
+      "user_condition": {
+        "role": {
+          "$in": [
+            "super_admin",
+            "pastor_admin",
+            "finance_officer",
+            "data_entry_staff"
+          ]
+        }
+      }
+    },
+    "update": {
+      "user_condition": {
+        "role": {
+          "$in": [
+            "super_admin",
+            "pastor_admin",
+            "finance_officer",
+            "data_entry_staff"
+          ]
+        }
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": {
+          "$in": [
+            "super_admin",
+            "pastor_admin",
+            "finance_officer"
+          ]
+        }
+      }
+    }
+  }
+}
