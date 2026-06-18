@@ -78,8 +78,8 @@ export default function ChurchSetupPage() {
       // ChurchSettings requires "super_admin". Promote this user first —
       // whoever runs setup IS the church administrator.
       const me = await base44.auth.me();
-      if (me?.id && me?.data?.role !== "super_admin") {
-        await base44.entities.User.update(me.id, { role: "super_admin" });
+      if (me?.data?.role !== "super_admin") {
+        await base44.auth.updateMe({ data: { role: "super_admin" } });
       }
       await saveSettings(form);
       navigate("/");
