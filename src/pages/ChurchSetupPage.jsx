@@ -49,6 +49,7 @@ export default function ChurchSetupPage() {
   const [error, setError] = useState("");
   const [previewFile, setPreviewFile] = useState(null);
   const [previewUrl, setPreviewUrl] = useState("");
+  const [logoError, setLogoError] = useState("");
   const [form, setForm] = useState({
     church_name: "",
     logo_url: "",
@@ -65,9 +66,18 @@ export default function ChurchSetupPage() {
   function handleLogoUpload(e) {
     const file = e.target.files[0];
     if (!file) return;
-    if (!file.type.startsWith("image/")) { setError("Please upload an image file."); return; }
-    if (file.size > 5 * 1024 * 1024) { setError("Image must be under 5 MB."); return; }
-    setError("");
+    if (!file.type.startsWith("image/")) {
+      setLogoError(`"${file.name}" is not an image. Accepted formats: JPG, PNG, GIF, SVG, WebP.`);
+      e.target.value = "";
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      const sizeMB = (file.size / 1024 / 1024).toFixed(1);
+      setLogoError(`File is ${sizeMB} MB — must be under 5 MB. Try compressing it first.`);
+      e.target.value = "";
+      return;
+    }
+    setLogoError("");
     setPreviewFile(file);
     setPreviewUrl(URL.createObjectURL(file));
     e.target.value = "";
@@ -76,7 +86,7 @@ export default function ChurchSetupPage() {
   async function handleConfirmLogo() {
     if (!previewFile) return;
     setUploading(true);
-    setError("");
+    setLogoError("");
     try {
       const { file_url } = await base44.integrations.Core.UploadFile({ file: previewFile });
       set("logo_url", file_url);
@@ -85,7 +95,7 @@ export default function ChurchSetupPage() {
       setPreviewUrl("");
     } catch (err) {
       console.error("Logo upload failed:", err);
-      setError("Logo upload failed. Please try again.");
+      setLogoError("Upload failed — check your connection and try again.");
     } finally {
       setUploading(false);
     }
@@ -95,6 +105,7 @@ export default function ChurchSetupPage() {
     URL.revokeObjectURL(previewUrl);
     setPreviewFile(null);
     setPreviewUrl("");
+    setLogoError("");
   }
 
   function handleCurrencyChange(code) {
@@ -162,8 +173,11 @@ export default function ChurchSetupPage() {
                 <Input className="mt-1" placeholder="e.g. Grace Community Church" value={form.church_name} onChange={e => set("church_name", e.target.value)} />
               </div>
               <div>
-                <Label>Church Logo (optional)</Label>
-                <div className="mt-1 flex items-center gap-4">
+                <div className="flex items-center gap-2 mb-1">
+                  <Label>Church Logo</Label>
+                  <span className="text-xs px-2 py-0.5 rounded-full bg-muted text-muted-foreground">Optional</span>
+                </div>
+                <div className="flex items-center gap-4">
                   {form.logo_url && (
                     <div className="relative group">
                       <img src={form.logo_url} alt="logo" className="w-14 h-14 rounded-xl object-cover border border-border" />
@@ -181,6 +195,12 @@ export default function ChurchSetupPage() {
                     <input type="file" accept="image/*" className="hidden" onChange={handleLogoUpload} disabled={uploading} />
                   </label>
                 </div>
+                <p className="text-xs text-muted-foreground mt-2">JPG, PNG, GIF, SVG, WebP · Max 5 MB · You can add this later too</p>
+                {logoError && (
+                  <p className="text-xs text-destructive mt-1.5 flex items-start gap-1">
+                    <span>⚠</span> {logoError}
+                  </p>
+                )}
               </div>
               <Button className="w-full" onClick={() => setStep(2)} disabled={!form.church_name.trim()}>Next →</Button>
             </div>
@@ -273,7 +293,7 @@ export default function ChurchSetupPage() {
               />
             </div>
             <p className="text-sm text-muted-foreground text-center">Does this look right for your church logo?</p>
-            {error && <p className="text-sm text-destructive text-center">{error}</p>}
+            {logoError && <p className="text-sm text-destructive text-center">⚠ {logoError}</p>}
             <div className="flex gap-3">
               <Button variant="outline" className="flex-1" onClick={handleCancelLogo} disabled={uploading}>
                 Choose Different
