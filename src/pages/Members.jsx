@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { entities } from "@/api/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -25,7 +25,7 @@ export default function Members() {
   useEffect(() => { loadData(); }, []);
 
   async function loadData() {
-    const [m, d] = await Promise.all([base44.entities.Member.list("-created_date", 500), base44.entities.Department.filter({ is_active: true })]);
+    const [m, d] = await Promise.all([entities.Member.list("-created_date", 500), entities.Department.filter({ is_active: true })]);
     setMembers(m); setDepartments(d); setLoading(false);
   }
 
@@ -35,13 +35,13 @@ export default function Members() {
   async function handleSave() {
     const dept = departments.find(d => d.id === form.department_id);
     const data = { ...form, department_name: dept?.name || "" };
-    if (editId) await base44.entities.Member.update(editId, data);
-    else await base44.entities.Member.create(data);
+    if (editId) await entities.Member.update(editId, data);
+    else await entities.Member.create(data);
     setOpen(false); loadData();
   }
 
   async function handleDelete(id) {
-    if (confirm("Delete this member?")) { await base44.entities.Member.delete(id); loadData(); }
+    if (confirm("Delete this member?")) { await entities.Member.delete(id); loadData(); }
   }
 
   const filtered = members.filter(m => {

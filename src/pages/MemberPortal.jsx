@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { entities } from "@/api/client";
+import { useAuth } from "@/lib/ClerkAuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -7,6 +8,7 @@ import { HandCoins, CalendarDays, User } from "lucide-react";
 import { format } from "date-fns";
 
 export default function MemberPortal() {
+  const { user: authUser } = useAuth();
   const [user, setUser] = useState(null);
   const [member, setMember] = useState(null);
   const [giving, setGiving] = useState([]);
@@ -20,24 +22,29 @@ export default function MemberPortal() {
   }, []);
 
   async function loadAll() {
-    const u = await base44.auth.me();
+    const u = authUser;
     setUser(u);
     setForm({ phone: u.phone || "", profile_photo_url: u.profile_photo_url || "" });
     const [members, givingData, eventsData] = await Promise.all([
-      base44.entities.Member.filter({ email: u.email }),
-      base44.entities.Giving.list("-date", 100),
-      base44.entities.Event.filter({ is_public: true }),
+      entities.Member.filter({ email: u.email }),
+      entities.Giving.list("-date", 100),
+      entities.Event.filter({ is_public: true }),
     ]);
-    if (members.length > 0) setMember(members[0]);
-    setGiving(givingData.filter(g => g.member_name && u.full_name && g.member_name.includes(u.full_name.split(" ")[0])).slice(0, 20));
+    const myMember = members.length > 0 ? members[0] : null;
+    if (myMember) setMember(myMember);
+    setGiving(givingData.filter(g => {
+      if (myMember?.id && g.member_id) return g.member_id === myMember.id;
+      return g.member_name && u.full_name &&
+        g.member_name.toLowerCase().trim() === u.full_name.toLowerCase().trim();
+    }).slice(0, 20));
     const now = new Date().toISOString();
     setEvents(eventsData.filter(e => e.start_datetime >= now).slice(0, 8));
   }
 
   async function handleSave() {
     setSaving(true);
-    await base44.auth.updateMe(form);
-    if (member) await base44.entities.Member.update(member.id, { phone: form.phone, profile_photo_url: form.profile_photo_url });
+    await entities.UserProfile.update(authUser.id, form);
+    if (member) await entities.Member.update(member.id, { phone: form.phone, profile_photo_url: form.profile_photo_url });
     setSaving(false);
     setEditing(false);
     setUser(prev => ({ ...prev, ...form }));

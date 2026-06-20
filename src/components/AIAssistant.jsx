@@ -88,9 +88,13 @@ export default function AIAssistant() {
     setMessages(prev => [...prev, assistantMsg]);
 
     try {
+      const token = await window.Clerk?.session?.getToken().catch(() => null);
       const response = await fetch('/api/ai', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+        },
         body: JSON.stringify({
           messages: updatedMessages,
           agentType,

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { entities } from "@/api/client";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LineChart, Line, CartesianGrid, Legend } from "recharts";
 import { format, subDays, startOfWeek, startOfMonth, parseISO, differenceInDays } from "date-fns";
 import { Users, TrendingUp, AlertTriangle, CheckCircle } from "lucide-react";
@@ -15,8 +15,8 @@ export default function AttendanceAnalyticsPage() {
 
   async function loadData() {
     const [a, m] = await Promise.all([
-      base44.entities.Attendance.list("-event_date", 2000),
-      base44.entities.Member.filter({ membership_status: "active" }),
+      entities.Attendance.list("-event_date", 2000),
+      entities.Member.filter({ membership_status: "active" }),
     ]);
     setAttendance(a);
     setMembers(m);

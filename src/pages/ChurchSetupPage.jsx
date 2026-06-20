@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { base44 } from "@/api/base44Client";
+import { useAuth } from "@/lib/ClerkAuthContext";
+import { uploadFile, entities } from "@/api/client";
 import { useChurchSettings } from "@/lib/ChurchSettingsContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -54,6 +55,7 @@ function getImageDimensions(objectUrl) {
 
 export default function ChurchSetupPage() {
   const { saveSettings } = useChurchSettings();
+  const { user } = useAuth();
   const navigate = useNavigate();
 
   const [step, setStep] = useState(1);
@@ -120,7 +122,7 @@ export default function ChurchSetupPage() {
     setUploading(true);
     setLogoError("");
     try {
-      const { file_url } = await base44.integrations.Core.UploadFile({ file: previewFile });
+      const { file_url } = await uploadFile(previewFile);
       set("logo_url", file_url);
       URL.revokeObjectURL(previewUrl);
       setPreviewFile(null);
@@ -150,11 +152,18 @@ export default function ChurchSetupPage() {
     setSaving(true);
     setError("");
     try {
-      // Best-effort role assignment — doesn't block setup if it fails
-      try {
-        await base44.auth.updateMe({ data: { role: form.role } });
-      } catch (roleErr) {
-        console.warn("Role assignment skipped:", roleErr?.message);
+      // Best-effort role assignment in UserProfile
+      if (user?.id) {
+        try {
+          const existing = await entities.UserProfile.filter({ clerkId: user.id });
+          if (existing.length) {
+            await entities.UserProfile.update(existing[0].id, { role: form.role });
+          } else {
+            await entities.UserProfile.create({ clerkId: user.id, role: form.role });
+          }
+        } catch (roleErr) {
+          console.warn("Role assignment skipped:", roleErr?.message);
+        }
       }
       const { role: _role, ...settingsData } = form;
       await saveSettings(settingsData);

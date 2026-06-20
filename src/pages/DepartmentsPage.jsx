@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { entities } from "@/api/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -25,7 +25,7 @@ export default function DepartmentsPage() {
   useEffect(() => { loadData(); }, []);
 
   async function loadData() {
-    const d = await base44.entities.Department.list("-created_date", 200);
+    const d = await entities.Department.list("-created_date", 200);
     setDepartments(d); setLoading(false);
   }
 
@@ -33,25 +33,25 @@ export default function DepartmentsPage() {
   function openEdit(d) { setForm({ ...d }); setEditId(d.id); setOpen(true); }
 
   async function handleSave() {
-    if (editId) await base44.entities.Department.update(editId, form);
-    else await base44.entities.Department.create(form);
+    if (editId) await entities.Department.update(editId, form);
+    else await entities.Department.create(form);
     setOpen(false); loadData();
   }
 
   async function handleDelete(id) {
     if (confirm("Delete this department? This cannot be undone.")) {
-      await base44.entities.Department.delete(id); loadData();
+      await entities.Department.delete(id); loadData();
     }
   }
 
   async function toggleActive(dept) {
-    await base44.entities.Department.update(dept.id, { is_active: !dept.is_active });
+    await entities.Department.update(dept.id, { is_active: !dept.is_active });
     loadData();
   }
 
   async function toggleMedia(dept) {
     const enabled = !dept.media_upload_enabled;
-    await base44.entities.Department.update(dept.id, {
+    await entities.Department.update(dept.id, {
       media_upload_enabled: enabled,
       allowed_media_types: enabled ? (dept.allowed_media_types === "none" ? "both" : dept.allowed_media_types) : "none"
     });
@@ -59,7 +59,7 @@ export default function DepartmentsPage() {
   }
 
   async function updateMediaType(deptId, v) {
-    await base44.entities.Department.update(deptId, { allowed_media_types: v });
+    await entities.Department.update(deptId, { allowed_media_types: v });
     loadData();
   }
 

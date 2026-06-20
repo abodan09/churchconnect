@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { entities } from "@/api/client";
+import { useAuth } from "@/lib/ClerkAuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -13,9 +14,9 @@ const EMPTY = { title: "", description: "", department_id: "", department_name: 
 const TYPE_COLORS = { service: "bg-green-100 text-green-700", meeting: "bg-blue-100 text-blue-700", activity: "bg-amber-100 text-amber-700", special: "bg-purple-100 text-purple-700", outreach: "bg-red-100 text-red-700", training: "bg-gray-100 text-gray-700" };
 
 export default function EventsPage() {
+  const { user } = useAuth();
   const [events, setEvents] = useState([]);
   const [departments, setDepartments] = useState([]);
-  const [user, setUser] = useState(null);
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("upcoming");
   const [open, setOpen] = useState(false);
@@ -26,12 +27,11 @@ export default function EventsPage() {
   useEffect(() => { loadData(); }, []);
 
   async function loadData() {
-    const [e, d, u] = await Promise.all([
-      base44.entities.Event.list("start_datetime", 300),
-      base44.entities.Department.filter({ is_active: true }),
-      base44.auth.me()
+    const [e, d] = await Promise.all([
+      entities.Event.list("start_datetime", 300),
+      entities.Department.filter({ is_active: true }),
     ]);
-    setEvents(e); setDepartments(d); setUser(u); setLoading(false);
+    setEvents(e); setDepartments(d); setLoading(false);
   }
 
   function openNew() { setForm(EMPTY); setEditId(null); setOpen(true); }
@@ -40,13 +40,13 @@ export default function EventsPage() {
   async function handleSave() {
     const dept = departments.find(d => d.id === form.department_id);
     const data = { ...form, department_name: dept?.name || "", created_by_name: user?.full_name || "" };
-    if (editId) await base44.entities.Event.update(editId, data);
-    else await base44.entities.Event.create(data);
+    if (editId) await entities.Event.update(editId, data);
+    else await entities.Event.create(data);
     setOpen(false); loadData();
   }
 
   async function handleDelete(id) {
-    if (confirm("Delete this event?")) { await base44.entities.Event.delete(id); loadData(); }
+    if (confirm("Delete this event?")) { await entities.Event.delete(id); loadData(); }
   }
 
   const now = new Date().toISOString();

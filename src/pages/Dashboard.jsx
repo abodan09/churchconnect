@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate, useOutletContext } from "react-router-dom";
-import { base44 } from "@/api/base44Client";
+import { entities } from "@/api/client";
 import StatCard from "@/components/StatCard";
 import { Users, HandCoins, Receipt, Building2, CalendarDays, TrendingUp } from "lucide-react";
 import { format } from "date-fns";
@@ -23,21 +23,22 @@ export default function Dashboard() {
   async function loadData() {
     setLoading(true);
     const [members, giving, expenditures, events] = await Promise.all([
-      base44.entities.Member.list("-created_date", 1000),
-      base44.entities.Giving.list("-date", 1000),
-      base44.entities.Expenditure.list("-date", 1000),
-      base44.entities.Event.list("start_datetime", 20),
+      entities.Member.list("-created_date", 1000),
+      entities.Giving.list("-date", 1000),
+      entities.Expenditure.list("-date", 1000),
+      entities.Event.list("start_datetime", 20),
     ]);
     const now = new Date().toISOString();
     // Upcoming birthdays this month
     const currentMonth = new Date().getMonth() + 1;
+    const parseDob = (str) => { try { const d = new Date(str); return isNaN(d) ? null : d; } catch { return null; } };
     const bdays = members.filter(m => {
       if (!m.date_of_birth) return false;
-      const month = parseInt(m.date_of_birth.split("-")[1], 10);
-      return month === currentMonth;
+      const dob = parseDob(m.date_of_birth);
+      return dob && (dob.getMonth() + 1) === currentMonth;
     }).sort((a, b) => {
-      const dayA = parseInt(a.date_of_birth.split("-")[2], 10);
-      const dayB = parseInt(b.date_of_birth.split("-")[2], 10);
+      const dayA = parseDob(a.date_of_birth)?.getDate() ?? 0;
+      const dayB = parseDob(b.date_of_birth)?.getDate() ?? 0;
       return dayA - dayB;
     });
     setBirthdayMembers(bdays);

@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { entities } from "@/api/client";
+import { useAuth } from "@/lib/ClerkAuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -9,11 +10,11 @@ import { ClipboardCheck, Search, UserCheck, TrendingDown, Users, BarChart3 } fro
 import StatCard from "@/components/StatCard";
 
 export default function AttendancePage() {
+  const { user } = useAuth();
   const [attendance, setAttendance] = useState([]);
   const [events, setEvents] = useState([]);
   const [members, setMembers] = useState([]);
   const [departments, setDepartments] = useState([]);
-  const [user, setUser] = useState(null);
   const [selectedEvent, setSelectedEvent] = useState("");
   const [search, setSearch] = useState("");
   const [open, setOpen] = useState(false);
@@ -26,20 +27,19 @@ export default function AttendancePage() {
   useEffect(() => { loadData(); }, []);
 
   async function loadData() {
-    const [a, e, m, d, u] = await Promise.all([
-      base44.entities.Attendance.list("-check_in_time", 500),
-      base44.entities.Event.list("-start_datetime", 50),
-      base44.entities.Member.list("-created_date", 500),
-      base44.entities.Department.list("-created_date", 100),
-      base44.auth.me()
+    const [a, e, m, d] = await Promise.all([
+      entities.Attendance.list("-check_in_time", 500),
+      entities.Event.list("-start_datetime", 50),
+      entities.Member.list("-created_date", 500),
+      entities.Department.list("-created_date", 100),
     ]);
-    setAttendance(a); setEvents(e); setMembers(m); setDepartments(d); setUser(u); setLoading(false);
+    setAttendance(a); setEvents(e); setMembers(m); setDepartments(d); setLoading(false);
   }
 
   async function handleCheckIn() {
     if (!selectedEvent || !selectedMember) return;
     const evt = events.find(e => e.id === selectedEvent);
-    await base44.entities.Attendance.create({
+    await entities.Attendance.create({
       event_id: selectedEvent,
       event_name: evt?.title || "",
       event_date: evt?.start_datetime?.split("T")[0] || "",

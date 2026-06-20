@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { entities } from "@/api/client";
 
 const ChurchSettingsContext = createContext(null);
 
@@ -11,7 +11,7 @@ export function ChurchSettingsProvider({ children }) {
 
   async function load() {
     try {
-      const list = await base44.entities.ChurchSettings.list();
+      const list = await entities.ChurchSettings.list();
       setSettings(list[0] || null);
     } catch (error) {
       console.error('Failed to load church settings:', error);
@@ -23,8 +23,8 @@ export function ChurchSettingsProvider({ children }) {
 
   async function saveSettings(data) {
     const saved = settings?.id
-      ? await base44.entities.ChurchSettings.update(settings.id, data)
-      : await base44.entities.ChurchSettings.create(data);
+      ? await entities.ChurchSettings.update(settings.id, data)
+      : await entities.ChurchSettings.create(data);
     setSettings(saved);
     return saved;
   }

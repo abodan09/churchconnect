@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { entities } from "@/api/client";
+import { useAuth } from "@/lib/ClerkAuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -14,9 +15,9 @@ const CATS = ["utilities","salaries","maintenance","outreach","events","equipmen
 const STATUS_COLOR = { pending: "bg-amber-100 text-amber-700", approved: "bg-green-100 text-green-700", rejected: "bg-red-100 text-red-700" };
 
 export default function ExpenditurePage() {
+  const { user } = useAuth();
   const [expenditures, setExpenditures] = useState([]);
   const [departments, setDepartments] = useState([]);
-  const [user, setUser] = useState(null);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [open, setOpen] = useState(false);
@@ -27,8 +28,8 @@ export default function ExpenditurePage() {
   useEffect(() => { loadData(); }, []);
 
   async function loadData() {
-    const [e, d, u] = await Promise.all([base44.entities.Expenditure.list("-date", 500), base44.entities.Department.filter({ is_active: true }), base44.auth.me()]);
-    setExpenditures(e); setDepartments(d); setUser(u); setLoading(false);
+    const [e, d] = await Promise.all([entities.Expenditure.list("-date", 500), entities.Department.filter({ is_active: true })]);
+    setExpenditures(e); setDepartments(d); setLoading(false);
   }
 
   function openNew() { setForm(EMPTY); setEditId(null); setOpen(true); }
@@ -37,21 +38,23 @@ export default function ExpenditurePage() {
   async function handleSave() {
     const dept = departments.find(d => d.id === form.department_id);
     const data = { ...form, amount: parseFloat(form.amount) || 0, department_name: dept?.name || form.department_name };
-    if (editId) await base44.entities.Expenditure.update(editId, data);
-    else await base44.entities.Expenditure.create({ ...data, approval_status: "pending" });
+    if (editId) await entities.Expenditure.update(editId, data);
+    else await entities.Expenditure.create({ ...data, approval_status: "pending" });
     setOpen(false); loadData();
   }
 
   async function handleApprove(id, status) {
-    await base44.entities.Expenditure.update(id, { approval_status: status, approved_by: user?.full_name, approved_date: new Date().toISOString().split("T")[0] });
+    if (!canApprove) return;
+    await entities.Expenditure.update(id, { approval_status: status, approved_by: user?.full_name, approved_date: new Date().toISOString().split("T")[0] });
     loadData();
   }
 
   async function handleDelete(id) {
-    if (confirm("Delete this record?")) { await base44.entities.Expenditure.delete(id); loadData(); }
+    if (!["super_admin", "pastor_admin"].includes(user?.data?.role)) return;
+    if (confirm("Delete this record?")) { await entities.Expenditure.delete(id); loadData(); }
   }
 
-  const canApprove = ["super_admin","pastor_admin","department_head"].includes(user?.role);
+  const canApprove = ["super_admin","pastor_admin","department_head"].includes(user?.data?.role);
 
   const filtered = expenditures.filter(e => {
     const match = (e.description || "").toLowerCase().includes(search.toLowerCase()) || (e.category || "").toLowerCase().includes(search.toLowerCase());

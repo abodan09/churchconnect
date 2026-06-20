@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { entities, uploadFile } from '@/api/client';
+import { useAuth } from '@/lib/ClerkAuthContext';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -10,9 +11,9 @@ import { Plus, Search, Edit, Trash2, Mic2, Video, Play } from "lucide-react";
 const EMPTY = { title: "", description: "", preacher: "", date: "", department_id: "", department_name: "", media_type: "audio", file_url: "", thumbnail_url: "", duration_minutes: "", tags: "" };
 
 export default function SermonsPage() {
+  const { user } = useAuth();
   const [sermons, setSermons] = useState([]);
   const [departments, setDepartments] = useState([]);
-  const [user, setUser] = useState(null);
   const [search, setSearch] = useState("");
   const [deptFilter, setDeptFilter] = useState("all");
   const [open, setOpen] = useState(false);
@@ -24,12 +25,11 @@ export default function SermonsPage() {
   useEffect(() => { loadData(); }, []);
 
   async function loadData() {
-    const [s, d, u] = await Promise.all([
-      base44.entities.Sermon.list("-date", 200),
-      base44.entities.Department.filter({ is_active: true, media_upload_enabled: true }),
-      base44.auth.me()
+    const [s, d] = await Promise.all([
+      entities.Sermon.list("-date", 200),
+      entities.Department.filter({ is_active: true, media_upload_enabled: true }),
     ]);
-    setSermons(s); setDepartments(d); setUser(u); setLoading(false);
+    setSermons(s); setDepartments(d); setLoading(false);
   }
 
   function openNew() { setForm(EMPTY); setEditId(null); setOpen(true); }
@@ -39,7 +39,7 @@ export default function SermonsPage() {
     const file = e.target.files[0];
     if (!file) return;
     setUploading(true);
-    const { file_url } = await base44.integrations.Core.UploadFile({ file });
+    const { file_url } = await uploadFile(file);
     setForm(p => ({ ...p, file_url }));
     setUploading(false);
   }
@@ -47,13 +47,13 @@ export default function SermonsPage() {
   async function handleSave() {
     const dept = departments.find(d => d.id === form.department_id);
     const data = { ...form, duration_minutes: parseFloat(form.duration_minutes) || 0, department_name: dept?.name || "" };
-    if (editId) await base44.entities.Sermon.update(editId, data);
-    else await base44.entities.Sermon.create(data);
+    if (editId) await entities.Sermon.update(editId, data);
+    else await entities.Sermon.create(data);
     setOpen(false); loadData();
   }
 
   async function handleDelete(id) {
-    if (confirm("Delete this sermon?")) { await base44.entities.Sermon.delete(id); loadData(); }
+    if (confirm("Delete this sermon?")) { await entities.Sermon.delete(id); loadData(); }
   }
 
   const filtered = sermons.filter(s => {

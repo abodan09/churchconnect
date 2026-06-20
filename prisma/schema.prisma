@@ -1,0 +1,191 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model UserProfile {
+  id              String   @id @default(cuid())
+  clerkId         String   @unique
+  role            String   @default("member")
+  departmentId    String?
+  phone           String?
+  profilePhotoUrl String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model Member {
+  id                    String   @id @default(cuid())
+  first_name            String
+  last_name             String
+  email                 String?
+  phone                 String?
+  address               String?
+  department_id         String?
+  department_name       String?
+  join_date             String?
+  membership_status     String   @default("active")
+  profile_photo_url     String?
+  gender                String?
+  date_of_birth         String?
+  marital_status        String?
+  occupation            String?
+  emergency_contact_name  String?
+  emergency_contact_phone String?
+  notes                 String?
+  user_id               String?
+  created_by_id         String?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+}
+
+model Department {
+  id                    String   @id @default(cuid())
+  name                  String
+  description           String?
+  head_name             String?
+  head_user_id          String?
+  media_upload_enabled  Boolean  @default(false)
+  allowed_media_types   String   @default("none")
+  is_active             Boolean  @default(true)
+  color                 String?
+  created_by_id         String?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+}
+
+model Event {
+  id               String   @id @default(cuid())
+  title            String
+  description      String?
+  department_id    String?
+  department_name  String?
+  start_datetime   String
+  end_datetime     String?
+  location         String?
+  event_type       String   @default("service")
+  is_public        Boolean  @default(true)
+  created_by_name  String?
+  created_by_id    String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+model Giving {
+  id               String   @id @default(cuid())
+  member_id        String
+  member_name      String?
+  date             String
+  amount           Float
+  type             String   @default("tithe")
+  payment_method   String   @default("cash")
+  service_or_event String?
+  notes            String?
+  recorded_by      String?
+  created_by_id    String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+model Expenditure {
+  id               String   @id @default(cuid())
+  date             String
+  category         String
+  description      String
+  amount           Float
+  department_id    String?
+  department_name  String?
+  approval_status  String   @default("pending")
+  approved_by      String?
+  approved_date    String?
+  receipt_url      String?
+  notes            String?
+  created_by_id    String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+model Attendance {
+  id              String   @id @default(cuid())
+  event_id        String
+  event_name      String?
+  event_date      String?
+  member_id       String
+  member_name     String?
+  department_id   String?
+  department_name String?
+  check_in_time   String?
+  status          String   @default("present")
+  checked_in_by   String?
+  notes           String?
+  created_by_id   String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model Sermon {
+  id               String   @id @default(cuid())
+  title            String
+  description      String?
+  preacher         String
+  date             String
+  department_id    String?
+  department_name  String?
+  media_type       String?
+  file_url         String?
+  thumbnail_url    String?
+  duration_minutes Float?
+  tags             String?
+  created_by_id    String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+model Property {
+  id                        String   @id @default(cuid())
+  type                      String
+  name                      String
+  description               String?
+  location_or_serial        String?
+  purchase_date             String?
+  purchase_value            Float?
+  current_condition         String?
+  assigned_department_id    String?
+  assigned_department_name  String?
+  maintenance_notes         String?
+  photo_url                 String?
+  created_by_id             String?
+  createdAt                 DateTime @default(now())
+  updatedAt                 DateTime @updatedAt
+}
+
+model ChurchSettings {
+  id              String   @id @default(cuid())
+  church_name     String
+  logo_url        String?
+  language        String   @default("en")
+  currency_code   String   @default("EUR")
+  currency_symbol String   @default("€")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model AccessRequest {
+  id                String   @id @default(cuid())
+  name              String
+  email             String
+  social_platform   String   @default("other")
+  social_handle     String?
+  message           String?
+  status            String   @default("pending")
+  requested_at      String?
+  reviewed_by       String?
+  reviewed_at       String?
+  rejection_reason  String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}

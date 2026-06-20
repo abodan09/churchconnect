@@ -1,11 +1,12 @@
 import { useState, useEffect } from "react";
 import { Outlet, Link, useLocation, useNavigate } from "react-router-dom";
-import { base44 } from "@/api/base44Client";
+import { useAuth } from "@/lib/ClerkAuthContext";
+import { entities } from "@/api/client";
 import { useChurchSettings } from "@/lib/ChurchSettingsContext";
 import {
   LayoutDashboard, Users, HandCoins, Receipt, Building2, Layers,
   Mic2, CalendarDays, ClipboardCheck, FileBarChart2, LogOut,
-  Menu, X, ChevronRight, Home, PieChart, Settings
+  Menu, ChevronRight, Home, PieChart, Settings, ShieldCheck
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -59,29 +60,33 @@ const NAV = {
 };
 
 export default function Layout() {
-  const [user, setUser] = useState(null);
+  const { user, signOut } = useAuth();
   const [open, setOpen] = useState(false);
+  const [pendingRequests, setPendingRequests] = useState(0);
   const location = useLocation();
   const navigate = useNavigate();
   const { settings, loading: settingsLoading } = useChurchSettings();
 
-  // Redirect to setup if no settings configured (admin only)
+  // Redirect to setup if no settings configured
   useEffect(() => {
     if (!settingsLoading && !settings) {
       navigate("/setup");
     }
   }, [settings, settingsLoading, navigate]);
 
-  useEffect(() => {
-    base44.auth.me().then(setUser).catch(() => {});
-  }, []);
+  const role = user?.role || 'member';
 
-  const rawRole = user?.role || "member";
-  // Map base44 built-in roles to app roles
-  const role = rawRole === "admin" ? "super_admin" : rawRole;
+  useEffect(() => {
+    if (["super_admin", "pastor_admin"].includes(role)) {
+      entities.AccessRequest.filter({ status: "pending" })
+        .then(reqs => setPendingRequests(reqs.length))
+        .catch(() => {});
+    }
+  }, [role]);
+
   const navItems = NAV[role] || NAV.member;
 
-  const handleLogout = () => base44.auth.logout("/login");
+  const handleLogout = () => signOut('/login');
 
   return (
     <div className="flex h-screen bg-background overflow-hidden">
@@ -135,11 +140,28 @@ export default function Layout() {
         <div className="px-3 py-4 border-t border-white/10">
           {user && (
             <div className="px-3 mb-3">
-              <p className="text-xs font-semibold text-primary-foreground/80 truncate">{user.full_name}</p>
+              <p className="text-xs font-semibold text-primary-foreground/80 truncate">{user.full_name || user.email}</p>
               <p className="text-xs text-primary-foreground/50 capitalize">{role.replace(/_/g, " ")}</p>
             </div>
           )}
-          {(role === "super_admin") && (
+          {["super_admin", "pastor_admin"].includes(role) && (
+            <Link
+              to="/access-requests"
+              onClick={() => setOpen(false)}
+              className={`flex items-center gap-3 w-full px-3 py-2.5 rounded-lg text-sm transition-colors mb-1 ${
+                location.pathname === "/access-requests" ? "bg-white/20 text-white" : "text-primary-foreground/70 hover:bg-white/10 hover:text-white"
+              }`}
+            >
+              <ShieldCheck className="w-4 h-4 flex-shrink-0" />
+              Access Requests
+              {pendingRequests > 0 && (
+                <span className="ml-auto inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1 rounded-full bg-destructive text-destructive-foreground text-xs font-bold">
+                  {pendingRequests}
+                </span>
+              )}
+            </Link>
+          )}
+          {role === "super_admin" && (
             <Link
               to="/church-settings"
               onClick={() => setOpen(false)}

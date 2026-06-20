@@ -1,9 +1,10 @@
+import { ClerkProvider } from '@clerk/clerk-react'
 import { Toaster } from "@/components/ui/toaster"
 import { QueryClientProvider } from '@tanstack/react-query'
 import { queryClientInstance } from '@/lib/query-client'
 import { BrowserRouter as Router, Route, Routes, Navigate } from 'react-router-dom';
 import PageNotFound from './lib/PageNotFound';
-import { AuthProvider, useAuth } from '@/lib/AuthContext';
+import { AuthProvider, useAuth } from '@/lib/ClerkAuthContext';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
 import Layout from './components/Layout';
 import Dashboard from './pages/Dashboard';
@@ -25,6 +26,8 @@ import Login from './pages/Login';
 import Register from './pages/Register';
 import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
+import RequestAccessPage from './pages/RequestAccessPage';
+import AccessRequestsAdminPage from './pages/AccessRequestsAdminPage';
 import AIAssistant from './components/AIAssistant';
 
 const AuthenticatedApp = () => {
@@ -53,6 +56,7 @@ const AuthenticatedApp = () => {
         <Route path="/setup" element={<ChurchSetupPage />} />
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
+        <Route path="/request-access" element={<RequestAccessPage />} />
         <Route path="/forgot-password" element={<ForgotPassword />} />
         <Route path="/reset-password" element={<ResetPassword />} />
         <Route element={<Layout />}>
@@ -69,6 +73,7 @@ const AuthenticatedApp = () => {
           <Route path="/reports" element={<FinancialReportsPage />} />
           <Route path="/attendance-analytics" element={<AttendanceAnalyticsPage />} />
           <Route path="/church-settings" element={<ChurchSettingsPage />} />
+          <Route path="/access-requests" element={<AccessRequestsAdminPage />} />
         </Route>
         <Route path="*" element={<PageNotFound />} />
       </Routes>
@@ -79,16 +84,18 @@ const AuthenticatedApp = () => {
 
 function App() {
   return (
-    <AuthProvider>
-      <ChurchSettingsProvider>
-        <QueryClientProvider client={queryClientInstance}>
-          <Router>
-            <AuthenticatedApp />
-          </Router>
-          <Toaster />
-        </QueryClientProvider>
-      </ChurchSettingsProvider>
-    </AuthProvider>
+    <ClerkProvider publishableKey={import.meta.env.VITE_CLERK_PUBLISHABLE_KEY}>
+      <AuthProvider>
+        <ChurchSettingsProvider>
+          <QueryClientProvider client={queryClientInstance}>
+            <Router>
+              <AuthenticatedApp />
+            </Router>
+            <Toaster />
+          </QueryClientProvider>
+        </ChurchSettingsProvider>
+      </AuthProvider>
+    </ClerkProvider>
   )
 }
 

@@ -3,6 +3,20 @@
 
 import Anthropic from '@anthropic-ai/sdk';
 
+function setCors(req, res) {
+  const configured = process.env.ALLOWED_ORIGIN;
+  if (!configured) {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    return;
+  }
+  const allowed = configured.split(',').map(o => o.trim());
+  const origin = req.headers.origin;
+  if (origin && allowed.includes(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Vary', 'Origin');
+  }
+}
+
 const CHURCH_AGENTS = {
   pastoral: {
     name: 'Pastoral Assistant',
@@ -38,9 +52,9 @@ When asked to draft a message, provide a complete, ready-to-send draft.`,
 
 export default async function handler(req, res) {
   if (req.method === 'OPTIONS') {
-    res.setHeader('Access-Control-Allow-Origin', '*');
+    setCors(req, res);
     res.setHeader('Access-Control-Allow-Methods', 'POST,OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization');
     return res.status(204).end();
   }
 
@@ -48,12 +62,21 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
-    return res.status(500).json({ error: 'ANTHROPIC_API_KEY not configured' });
+    return res.status(500).json({ error: 'Service configuration error' });
   }
 
   const { messages = [], agentType = 'pastoral', context = '' } = req.body || {};
+
+  if (!Array.isArray(messages) || messages.length > 50) {
+    return res.status(400).json({ error: 'Invalid request' });
+  }
 
   const agent = CHURCH_AGENTS[agentType] || CHURCH_AGENTS.pastoral;
 
@@ -66,7 +89,7 @@ export default async function handler(req, res) {
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
-  res.setHeader('Access-Control-Allow-Origin', '*');
+  setCors(req, res);
 
   try {
     const stream = client.messages.stream({
@@ -86,7 +109,9 @@ export default async function handler(req, res) {
     res.end();
   } catch (err) {
     console.error('Anthropic API error:', err);
-    res.write(`data: ${JSON.stringify({ error: err.message })}\n\n`);
+    const status = err.status;
+    const clientMessage = status === 429 ? 'Service temporarily unavailable. Please try again.' : 'An error occurred. Please try again.';
+    res.write(`data: ${JSON.stringify({ error: clientMessage })}\n\n`);
     res.end();
   }
 }

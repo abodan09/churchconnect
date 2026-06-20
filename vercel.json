@@ -1,7 +1,4 @@
 {
-  "rewrites": [
-    { "source": "/api/apps/(.*)", "destination": "/api/base44/proxy" }
-  ],
   "headers": [
     {
       "source": "/(.*)",

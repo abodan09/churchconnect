@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { entities } from "@/api/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -26,7 +26,7 @@ export default function PropertiesPage() {
   useEffect(() => { loadData(); }, []);
 
   async function loadData() {
-    const [p, d] = await Promise.all([base44.entities.Property.list("-created_date", 300), base44.entities.Department.filter({ is_active: true })]);
+    const [p, d] = await Promise.all([entities.Property.list("-created_date", 300), entities.Department.filter({ is_active: true })]);
     setProperties(p); setDepartments(d); setLoading(false);
   }
 
@@ -36,13 +36,13 @@ export default function PropertiesPage() {
   async function handleSave() {
     const dept = departments.find(d => d.id === form.assigned_department_id);
     const data = { ...form, purchase_value: parseFloat(form.purchase_value) || 0, assigned_department_name: dept?.name || "" };
-    if (editId) await base44.entities.Property.update(editId, data);
-    else await base44.entities.Property.create(data);
+    if (editId) await entities.Property.update(editId, data);
+    else await entities.Property.create(data);
     setOpen(false); loadData();
   }
 
   async function handleDelete(id) {
-    if (confirm("Delete this property?")) { await base44.entities.Property.delete(id); loadData(); }
+    if (confirm("Delete this property?")) { await entities.Property.delete(id); loadData(); }
   }
 
   const filtered = properties.filter(p => {

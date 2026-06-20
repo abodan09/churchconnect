@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { entities } from "@/api/client";
+import { useAuth } from "@/lib/ClerkAuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -14,6 +15,7 @@ const TYPE_LABEL = { tithe: "Tithe", offering: "Offering", special_offering: "Sp
 const TYPE_COLOR = { tithe: "bg-green-100 text-green-700", offering: "bg-blue-100 text-blue-700", special_offering: "bg-purple-100 text-purple-700", thanksgiving: "bg-amber-100 text-amber-700", building_fund: "bg-red-100 text-red-700" };
 
 export default function GivingPage() {
+  const { user } = useAuth();
   const [giving, setGiving] = useState([]);
   const [members, setMembers] = useState([]);
   const [search, setSearch] = useState("");
@@ -27,7 +29,7 @@ export default function GivingPage() {
   useEffect(() => { loadData(); }, []);
 
   async function loadData() {
-    const [g, m] = await Promise.all([base44.entities.Giving.list("-date", 500), base44.entities.Member.list("-created_date", 500)]);
+    const [g, m] = await Promise.all([entities.Giving.list("-date", 500), entities.Member.list("-created_date", 500)]);
     setGiving(g); setMembers(m); setLoading(false);
   }
 
@@ -40,15 +42,14 @@ export default function GivingPage() {
   }
 
   async function handleSave() {
-    const user = await base44.auth.me();
-    const data = { ...form, amount: parseFloat(form.amount) || 0, recorded_by: user.full_name };
-    if (editId) await base44.entities.Giving.update(editId, data);
-    else await base44.entities.Giving.create(data);
+    const data = { ...form, amount: parseFloat(form.amount) || 0, recorded_by: user?.full_name };
+    if (editId) await entities.Giving.update(editId, data);
+    else await entities.Giving.create(data);
     setOpen(false); loadData();
   }
 
   async function handleDelete(id) {
-    if (confirm("Delete this record?")) { await base44.entities.Giving.delete(id); loadData(); }
+    if (confirm("Delete this record?")) { await entities.Giving.delete(id); loadData(); }
   }
 
   const filtered = giving.filter(g => {
