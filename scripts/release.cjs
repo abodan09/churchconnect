@@ -49,16 +49,22 @@ console.log(`✅ package.json updated to ${newVersion}`);
 run('npm run electron:build');
 
 // ── 3. Copy with clean file names ───────────────────────────────────────────
-const setupSrc   = path.join(DIST, `ChurchConnect Setup ${newVersion}.exe`);
-const portSrc    = path.join(DIST, `ChurchConnect ${newVersion}.exe`);
-const setupDest  = path.join(DIST, 'ChurchConnect-Setup.exe');
-const portDest   = path.join(DIST, 'ChurchConnect-Portable.exe');
+const setupSrc        = path.join(DIST, `ChurchConnect Setup ${newVersion}.exe`);
+const portSrc         = path.join(DIST, `ChurchConnect ${newVersion}.exe`);
+const setupDest       = path.join(DIST, 'ChurchConnect-Setup.exe');
+const portDest        = path.join(DIST, 'ChurchConnect-Portable.exe');
+const setupVersioned  = path.join(DIST, `ChurchConnect-Setup-${newVersion}.exe`);
+const portVersioned   = path.join(DIST, `ChurchConnect-Portable-${newVersion}.exe`);
 
 if (!fs.existsSync(setupSrc)) { console.error(`Missing: ${setupSrc}`); process.exit(1); }
 if (!fs.existsSync(portSrc))  { console.error(`Missing: ${portSrc}`);  process.exit(1); }
 
+// Plain names — what the landing site's /releases/latest/download/ links use
 fs.copyFileSync(setupSrc, setupDest);
 fs.copyFileSync(portSrc, portDest);
+// Versioned names — shown in the release for clarity
+fs.copyFileSync(setupSrc, setupVersioned);
+fs.copyFileSync(portSrc, portVersioned);
 console.log('✅ Build artifacts copied');
 
 // ── 4. Git commit & push ─────────────────────────────────────────────────────
@@ -78,7 +84,7 @@ const notesFile = path.join(DIST, 'release-notes.md');
 fs.writeFileSync(notesFile, releaseNotes);
 
 run(
-  `gh release create v${newVersion} "${setupDest}" "${portDest}" "${path.join(DIST, 'latest.yml')}" --repo abodan09/churchconnect --title "ChurchConnect v${newVersion}" --notes-file "${notesFile}"`
+  `gh release create v${newVersion} "${setupDest}" "${portDest}" "${setupVersioned}" "${portVersioned}" "${path.join(DIST, 'latest.yml')}" --repo abodan09/churchconnect --title "ChurchConnect v${newVersion}" --notes-file "${notesFile}"`
 );
 console.log(`✅ GitHub release v${newVersion} created`);
 
