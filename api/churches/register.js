@@ -4,13 +4,11 @@
  * Called once per church during onboarding — subsequent sign-ins just load
  * the church via UserProfile.church_id.
  */
-import { createClerkClient } from '@clerk/backend';
+import { verifyToken } from '@clerk/backend';
 import { PrismaClient } from '@prisma/client';
 
 let _prisma = null;
-let _clerk  = null;
 function getPrisma() { if (!_prisma) _prisma = new PrismaClient(); return _prisma; }
-function getClerk()  { if (!_clerk)  _clerk  = createClerkClient({ secretKey: process.env.CLERK_SECRET_KEY }); return _clerk; }
 
 function slugify(str) {
   return str.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 60) || 'my-church';
@@ -29,7 +27,7 @@ export default async function handler(req, res) {
 
   let clerkId;
   try {
-    const payload = await getClerk().verifyToken(auth.split(' ')[1]);
+    const payload = await verifyToken(auth.split(' ')[1], { secretKey: process.env.CLERK_SECRET_KEY });
     clerkId = payload?.sub;
     if (!clerkId) throw new Error('No sub in token');
   } catch {

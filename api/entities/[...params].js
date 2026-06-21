@@ -1,17 +1,11 @@
-import { createClerkClient } from '@clerk/backend';
+import { verifyToken } from '@clerk/backend';
 import { PrismaClient } from '@prisma/client';
 
 let _prisma = null;
-let _clerk  = null;
 
 function getPrisma() {
   if (!_prisma) _prisma = new PrismaClient();
   return _prisma;
-}
-
-function getClerk() {
-  if (!_clerk) _clerk = createClerkClient({ secretKey: process.env.CLERK_SECRET_KEY });
-  return _clerk;
 }
 
 const MODEL_MAP = {
@@ -56,7 +50,7 @@ async function resolveIdentity(req) {
   if (!auth?.startsWith('Bearer ')) return { clerkId: null, churchId: null };
   try {
     const token   = auth.split(' ')[1];
-    const payload = await getClerk().verifyToken(token);
+    const payload = await verifyToken(token, { secretKey: process.env.CLERK_SECRET_KEY });
     const clerkId = payload?.sub;
     if (!clerkId) return { clerkId: null, churchId: null };
 
