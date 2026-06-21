@@ -8,9 +8,26 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// ── Tenant root ───────────────────────────────────────────────────────────────
+// Each row represents one church (one instance of the product).
+// Every other model carries church_id and is scoped to exactly one Church.
+
+model Church {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  plan      String   @default("trial")   // trial | starter | pro
+  is_active Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ── Users ─────────────────────────────────────────────────────────────────────
+
 model UserProfile {
   id              String   @id @default(cuid())
   clerkId         String   @unique
+  church_id       String
   role            String   @default("member")
   departmentId    String?
   phone           String?
@@ -19,8 +36,11 @@ model UserProfile {
   updatedAt       DateTime @updatedAt
 }
 
+// ── Members ───────────────────────────────────────────────────────────────────
+
 model Member {
   id                      String   @id @default(cuid())
+  church_id               String
   first_name              String
   last_name               String
   email                   String?
@@ -49,8 +69,11 @@ model Member {
   updatedAt               DateTime @updatedAt
 }
 
+// ── Departments ───────────────────────────────────────────────────────────────
+
 model Department {
   id                    String   @id @default(cuid())
+  church_id             String
   name                  String
   description           String?
   head_name             String?
@@ -65,8 +88,11 @@ model Department {
   updatedAt             DateTime @updatedAt
 }
 
+// ── Events ────────────────────────────────────────────────────────────────────
+
 model Event {
   id               String   @id @default(cuid())
+  church_id        String
   title            String
   description      String?
   department_id    String?
@@ -82,8 +108,11 @@ model Event {
   updatedAt        DateTime @updatedAt
 }
 
+// ── Giving ────────────────────────────────────────────────────────────────────
+
 model Giving {
   id               String   @id @default(cuid())
+  church_id        String
   member_id        String
   member_name      String?
   date             String
@@ -98,8 +127,11 @@ model Giving {
   updatedAt        DateTime @updatedAt
 }
 
+// ── Expenditures ──────────────────────────────────────────────────────────────
+
 model Expenditure {
   id               String   @id @default(cuid())
+  church_id        String
   date             String
   category         String
   description      String
@@ -116,8 +148,11 @@ model Expenditure {
   updatedAt        DateTime @updatedAt
 }
 
+// ── Attendance ────────────────────────────────────────────────────────────────
+
 model Attendance {
   id              String   @id @default(cuid())
+  church_id       String
   event_id        String
   event_name      String?
   event_date      String?
@@ -134,8 +169,11 @@ model Attendance {
   updatedAt       DateTime @updatedAt
 }
 
+// ── Sermons ───────────────────────────────────────────────────────────────────
+
 model Sermon {
   id               String   @id @default(cuid())
+  church_id        String
   title            String
   description      String?
   preacher         String
@@ -152,8 +190,11 @@ model Sermon {
   updatedAt        DateTime @updatedAt
 }
 
+// ── Properties ────────────────────────────────────────────────────────────────
+
 model Property {
   id                        String   @id @default(cuid())
+  church_id                 String
   type                      String
   name                      String
   description               String?
@@ -170,8 +211,11 @@ model Property {
   updatedAt                 DateTime @updatedAt
 }
 
+// ── Church Settings ───────────────────────────────────────────────────────────
+
 model ChurchSettings {
   id              String   @id @default(cuid())
+  church_id       String   @unique
   church_name     String
   logo_url        String?
   language        String   @default("en")
@@ -181,8 +225,11 @@ model ChurchSettings {
   updatedAt       DateTime @updatedAt
 }
 
+// ── Access Requests ───────────────────────────────────────────────────────────
+
 model AccessRequest {
   id                String   @id @default(cuid())
+  church_id         String
   name              String
   email             String
   social_platform   String   @default("other")
@@ -197,8 +244,11 @@ model AccessRequest {
   updatedAt         DateTime @updatedAt
 }
 
+// ── Small Groups ──────────────────────────────────────────────────────────────
+
 model SmallGroup {
   id                String   @id @default(cuid())
+  church_id         String
   name              String
   type              String   @default("bible_study")
   description       String?
@@ -222,6 +272,7 @@ model SmallGroup {
 
 model SmallGroupMember {
   id            String   @id @default(cuid())
+  church_id     String
   group_id      String
   group_name    String?
   member_id     String
@@ -235,8 +286,11 @@ model SmallGroupMember {
   updatedAt     DateTime @updatedAt
 }
 
+// ── Pastoral Care ─────────────────────────────────────────────────────────────
+
 model PastoralCare {
   id               String   @id @default(cuid())
+  church_id        String
   member_id        String?
   member_name      String?
   type             String   @default("prayer_request")
@@ -255,8 +309,11 @@ model PastoralCare {
   updatedAt        DateTime @updatedAt
 }
 
+// ── Volunteers ────────────────────────────────────────────────────────────────
+
 model Volunteer {
   id              String   @id @default(cuid())
+  church_id       String
   member_id       String
   member_name     String?
   event_id        String?
@@ -273,8 +330,11 @@ model Volunteer {
   updatedAt       DateTime @updatedAt
 }
 
+// ── Announcements ─────────────────────────────────────────────────────────────
+
 model Announcement {
   id              String   @id @default(cuid())
+  church_id       String
   title           String
   content         String
   audience        String   @default("all")

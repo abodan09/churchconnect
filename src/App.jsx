@@ -44,6 +44,7 @@ import AnnouncementsPage from './pages/AnnouncementsPage';
 import AIAssistant from './components/AIAssistant';
 import LocalSetupPage from './pages/LocalSetupPage';
 import LocalLoginPage from './pages/LocalLoginPage';
+import OnboardingPage from './pages/OnboardingPage';
 import UpdateNotifier from './components/UpdateNotifier';
 
 const IS_ELECTRON = typeof window !== 'undefined' && !!window.electronAPI?.isElectron;
@@ -51,7 +52,7 @@ const IS_ELECTRON = typeof window !== 'undefined' && !!window.electronAPI?.isEle
 const PUBLIC_PATHS = ['/login', '/register', '/request-access', '/forgot-password', '/reset-password'];
 
 const AuthenticatedApp = () => {
-  const { isLoadingAuth, isLoadingPublicSettings, authError, isAuthenticated } = useAuth();
+  const { isLoadingAuth, isLoadingPublicSettings, authError, isAuthenticated, needsOnboarding } = useAuth();
   const location = useLocation();
 
   if (isLoadingPublicSettings || isLoadingAuth) {
@@ -71,9 +72,15 @@ const AuthenticatedApp = () => {
     return <Navigate to="/login" replace />;
   }
 
+  // Signed-in but no church yet → must complete church onboarding
+  if (needsOnboarding && location.pathname !== '/onboarding') {
+    return <Navigate to="/onboarding" replace />;
+  }
+
   return (
     <>
       <Routes>
+        <Route path="/onboarding" element={<OnboardingPage />} />
         <Route path="/setup" element={<ChurchSetupPage />} />
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
