@@ -8,6 +8,13 @@ autoUpdater.logger.transports.file.level = 'info';
 autoUpdater.autoDownload = true;
 autoUpdater.autoInstallOnAppQuit = true;
 
+// Explicitly set the feed URL so the embedded app-update.yml is never the source of truth.
+autoUpdater.setFeedURL({
+  provider: 'github',
+  owner: 'abodan09',
+  repo: 'churchconnect',
+});
+
 function setupUpdater(mainWindow) {
   autoUpdater.on('checking-for-update', () => {
     mainWindow.webContents.send('update-checking');
