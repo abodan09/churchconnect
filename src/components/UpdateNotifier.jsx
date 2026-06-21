@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -12,6 +12,7 @@ export default function UpdateNotifier() {
   const [errorMsg, setErrorMsg] = useState('');
   const [open, setOpen] = useState(false);
   const [version, setVersion] = useState('');
+  const manualCheck = useRef(false);
 
   useEffect(() => {
     if (!window.electronAPI) return;
@@ -27,8 +28,7 @@ export default function UpdateNotifier() {
       }),
       window.electronAPI.onUpdateNotAvailable(() => {
         setState('uptodate');
-        // Only show "up to date" if the user manually checked
-        if (open) setOpen(true);
+        if (manualCheck.current) { setOpen(true); manualCheck.current = false; }
       }),
       window.electronAPI.onDownloadProgress((p) => {
         setState('downloading');
@@ -42,6 +42,13 @@ export default function UpdateNotifier() {
       window.electronAPI.onUpdateError((msg) => {
         setState('error');
         setErrorMsg(msg);
+        if (manualCheck.current) { setOpen(true); manualCheck.current = false; }
+      }),
+      window.electronAPI.onMenuCheckForUpdates?.(() => {
+        manualCheck.current = true;
+        setState('checking');
+        setOpen(true);
+        window.electronAPI.checkForUpdates();
       }),
     ];
 
@@ -49,6 +56,7 @@ export default function UpdateNotifier() {
   }, []);
 
   function handleCheckNow() {
+    manualCheck.current = true;
     setState('checking');
     setOpen(true);
     window.electronAPI?.checkForUpdates();

@@ -4,8 +4,15 @@ import { QueryClientProvider } from '@tanstack/react-query'
 import { queryClientInstance } from '@/lib/query-client'
 import { BrowserRouter as Router, Route, Routes, Navigate, useLocation } from 'react-router-dom';
 import PageNotFound from './lib/PageNotFound';
-import { AuthProvider, useAuth } from '@/lib/ClerkAuthContext';
+import { AuthProvider, AuthContext, useAuth } from '@/lib/ClerkAuthContext';
 import { ElectronAuthProvider, useAuth as useLocalAuth } from '@/lib/ElectronAuthContext';
+
+// Bridges ElectronAuthContext into AuthContext so all pages that call
+// useAuth() from ClerkAuthContext get real data in Electron mode too.
+function ElectronAuthBridge({ children }) {
+  const auth = useLocalAuth();
+  return <AuthContext.Provider value={auth}>{children}</AuthContext.Provider>;
+}
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
 import Layout from './components/Layout';
 import Dashboard from './pages/Dashboard';
@@ -172,15 +179,17 @@ function App() {
   if (IS_ELECTRON) {
     return (
       <ElectronAuthProvider>
-        <ChurchSettingsProvider>
-          <QueryClientProvider client={queryClientInstance}>
-            <Router>
-              <ElectronApp />
-              {IS_ELECTRON && <UpdateNotifier />}
-            </Router>
-            <Toaster />
-          </QueryClientProvider>
-        </ChurchSettingsProvider>
+        <ElectronAuthBridge>
+          <ChurchSettingsProvider>
+            <QueryClientProvider client={queryClientInstance}>
+              <Router>
+                <ElectronApp />
+                <UpdateNotifier />
+              </Router>
+              <Toaster />
+            </QueryClientProvider>
+          </ChurchSettingsProvider>
+        </ElectronAuthBridge>
       </ElectronAuthProvider>
     );
   }

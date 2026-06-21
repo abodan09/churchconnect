@@ -1,9 +1,17 @@
 import { PrismaClient } from '@prisma/client';
 
-const globalForPrisma = globalThis;
+let _client = null;
 
-const prisma = globalForPrisma.prisma ?? new PrismaClient();
+function getClient() {
+  if (!_client) {
+    _client = globalThis._prismaClient ?? new PrismaClient();
+    if (process.env.NODE_ENV !== 'production') globalThis._prismaClient = _client;
+  }
+  return _client;
+}
 
-if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = prisma;
-
-export default prisma;
+// Proxy defers PrismaClient construction until first property access,
+// so a missing DATABASE_URL won't crash the module at import time.
+export default new Proxy({}, {
+  get(_, prop) { return getClient()[prop]; }
+});

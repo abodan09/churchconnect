@@ -127,7 +127,7 @@ function createServer(userDataPath) {
     next();
   });
 
-  app.all('/api/entities/:resource/:id?', async (req, res) => {
+  async function entitiesHandler(req, res) {
     const { resource, id } = req.params;
     const model = MODEL_MAP[resource?.toLowerCase()];
     if (!model) return res.status(404).json({ error: 'Unknown resource' });
@@ -181,10 +181,13 @@ function createServer(userDataPath) {
       console.error(`[entities/${resource}]`, err.message);
       return res.status(500).json({ error: err.message });
     }
-  });
+  }
+
+  app.all('/api/entities/:resource', entitiesHandler);
+  app.all('/api/entities/:resource/:id', entitiesHandler);
 
   // Fallback → React app (SPA routing)
-  app.get('*', (req, res) => {
+  app.get('/{*path}', (req, res) => {
     if (req.path.startsWith('/api/') || req.path.startsWith('/uploads/')) return res.status(404).end();
     res.sendFile(path.join(distPath, 'index.html'));
   });
