@@ -1,0 +1,54 @@
+appId: eu.frozenbit.churchconnect
+productName: ChurchConnect
+copyright: Copyright © 2025 FrozenBit
+
+directories:
+  output: C:\ChurchConnect-dist
+  buildResources: build-resources
+
+files:
+  - dist/**
+  - electron/**
+  - "!electron/package.json"
+  - node_modules/**
+  - package.json
+
+# Rebuild native modules (better-sqlite3) for Electron's Node version
+npmRebuild: true
+buildDependenciesFromSource: false
+
+extraResources:
+  - from: prisma/schema.prisma
+    to: prisma/schema.prisma
+
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+    - target: portable
+      arch:
+        - x64
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: ChurchConnect
+  license: LICENSE.txt
+
+mac:
+  target: dmg
+  category: public.app-category.business
+
+linux:
+  target: AppImage
+  category: Office
+
+publish:
+  provider: github
+  owner: frozen-bit
+  repo: churchconnect
+  releaseType: release

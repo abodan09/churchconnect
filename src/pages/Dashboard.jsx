@@ -16,39 +16,48 @@ export default function Dashboard() {
 
   useEffect(() => {
     const role = user?.role === "admin" ? "super_admin" : (user?.role || "member");
-    if (role === "member") { navigate("/portal"); return; }
+    const deptId = user?.data?.department_id;
+    if (role === "member" && !deptId) { navigate("/portal"); return; }
+    if (!["super_admin", "pastor_admin", "finance_officer"].includes(role) && deptId) {
+      navigate("/dept-dashboard");
+      return;
+    }
     loadData();
   }, [user]);
 
   async function loadData() {
     setLoading(true);
-    const [members, giving, expenditures, events] = await Promise.all([
-      entities.Member.list("-created_date", 1000),
-      entities.Giving.list("-date", 1000),
-      entities.Expenditure.list("-date", 1000),
-      entities.Event.list("start_datetime", 20),
-    ]);
-    const now = new Date().toISOString();
-    // Upcoming birthdays this month
-    const currentMonth = new Date().getMonth() + 1;
-    const parseDob = (str) => { try { const d = new Date(str); return isNaN(d) ? null : d; } catch { return null; } };
-    const bdays = members.filter(m => {
-      if (!m.date_of_birth) return false;
-      const dob = parseDob(m.date_of_birth);
-      return dob && (dob.getMonth() + 1) === currentMonth;
-    }).sort((a, b) => {
-      const dayA = parseDob(a.date_of_birth)?.getDate() ?? 0;
-      const dayB = parseDob(b.date_of_birth)?.getDate() ?? 0;
-      return dayA - dayB;
-    });
-    setBirthdayMembers(bdays);
-    const totalTithes = giving.filter(g => g.type === "tithe").reduce((s, g) => s + (g.amount || 0), 0);
-    const totalOfferings = giving.filter(g => g.type !== "tithe").reduce((s, g) => s + (g.amount || 0), 0);
-    const totalExpenses = expenditures.filter(e => e.approval_status === "approved").reduce((s, e) => s + (e.amount || 0), 0);
-    setStats({ members: members.length, totalTithes, totalOfferings, totalExpenses });
-    setRecentGiving(giving.slice(0, 5));
-    setUpcomingEvents(events.filter(e => e.start_datetime >= now).slice(0, 5));
-    setLoading(false);
+    try {
+      const [members, giving, expenditures, events] = await Promise.all([
+        entities.Member.list("-created_date", 1000),
+        entities.Giving.list("-date", 1000),
+        entities.Expenditure.list("-date", 1000),
+        entities.Event.list("start_datetime", 20),
+      ]);
+      const now = new Date().toISOString();
+      const currentMonth = new Date().getMonth() + 1;
+      const parseDob = (str) => { try { const d = new Date(str); return isNaN(d) ? null : d; } catch { return null; } };
+      const bdays = members.filter(m => {
+        if (!m.date_of_birth) return false;
+        const dob = parseDob(m.date_of_birth);
+        return dob && (dob.getMonth() + 1) === currentMonth;
+      }).sort((a, b) => {
+        const dayA = parseDob(a.date_of_birth)?.getDate() ?? 0;
+        const dayB = parseDob(b.date_of_birth)?.getDate() ?? 0;
+        return dayA - dayB;
+      });
+      setBirthdayMembers(bdays);
+      const totalTithes = giving.filter(g => g.type === "tithe").reduce((s, g) => s + (g.amount || 0), 0);
+      const totalOfferings = giving.filter(g => g.type !== "tithe").reduce((s, g) => s + (g.amount || 0), 0);
+      const totalExpenses = expenditures.filter(e => e.approval_status === "approved").reduce((s, e) => s + (e.amount || 0), 0);
+      setStats({ members: members.length, totalTithes, totalOfferings, totalExpenses });
+      setRecentGiving(giving.slice(0, 5));
+      setUpcomingEvents(events.filter(e => e.start_datetime >= now).slice(0, 5));
+    } catch (err) {
+      console.error('Dashboard loadData failed:', err);
+    } finally {
+      setLoading(false);
+    }
   }
 
   const fmt = n => `€${Number(n).toLocaleString("en", { minimumFractionDigits: 2 })}`;

@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Upload, Save, Settings } from "lucide-react";
+import { Upload, Save, Settings, X } from "lucide-react";
 import { toast } from "sonner";
 
 const LANGUAGES = [
@@ -30,10 +30,22 @@ const CURRENCIES = [
   { code: "CHF", symbol: "CHF", label: "Swiss Franc (CHF)" },
 ];
 
+function getImageDimensions(objectUrl) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve({ w: img.naturalWidth, h: img.naturalHeight });
+    img.onerror = () => reject(new Error("Could not read image dimensions."));
+    img.src = objectUrl;
+  });
+}
+
 export default function ChurchSettingsPage() {
   const { settings, saveSettings } = useChurchSettings();
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState("");
+  const [previewFile, setPreviewFile] = useState(null);
+  const [previewUrl, setPreviewUrl] = useState("");
   const [form, setForm] = useState({
     church_name: "",
     logo_url: "",
@@ -58,13 +70,61 @@ export default function ChurchSettingsPage() {
     setForm(prev => ({ ...prev, [field]: value }));
   }
 
-  async function handleLogoUpload(e) {
+  async function handleLogoSelect(e) {
     const file = e.target.files[0];
+    e.target.value = "";
     if (!file) return;
+    setUploadError("");
+
+    if (!file.type.startsWith("image/")) {
+      setUploadError("Not an image file. Accepted: JPG, PNG, GIF, SVG, WebP.");
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setUploadError(`File is ${(file.size / 1024 / 1024).toFixed(1)} MB — must be under 5 MB.`);
+      return;
+    }
+
+    const objectUrl = URL.createObjectURL(file);
+    try {
+      const { w, h } = await getImageDimensions(objectUrl);
+      if (w < 100 || h < 100) {
+        URL.revokeObjectURL(objectUrl);
+        setUploadError(`Image too small (${w}×${h}px). Minimum 100×100px.`);
+        return;
+      }
+    } catch {
+      URL.revokeObjectURL(objectUrl);
+      setUploadError("Could not read this image. Try a different file.");
+      return;
+    }
+
+    setPreviewFile(file);
+    setPreviewUrl(objectUrl);
+  }
+
+  async function handleConfirmLogo() {
+    if (!previewFile) return;
     setUploading(true);
-    const { file_url } = await uploadFile(file);
-    set("logo_url", file_url);
-    setUploading(false);
+    setUploadError("");
+    try {
+      const { file_url } = await uploadFile(previewFile);
+      set("logo_url", file_url);
+      URL.revokeObjectURL(previewUrl);
+      setPreviewFile(null);
+      setPreviewUrl("");
+    } catch (err) {
+      setUploadError("Upload failed — check your connection or paste a URL below.");
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  function handleCancelPreview() {
+    URL.revokeObjectURL(previewUrl);
+    setPreviewFile(null);
+    setPreviewUrl("");
+    setUploadError("");
   }
 
   function handleCurrencyChange(code) {
@@ -75,9 +135,15 @@ export default function ChurchSettingsPage() {
   async function handleSave() {
     if (!form.church_name.trim()) return;
     setSaving(true);
-    await saveSettings(form);
-    setSaving(false);
-    toast.success("Settings saved successfully!");
+    try {
+      await saveSettings(form);
+      toast.success("Settings saved successfully!");
+    } catch (err) {
+      toast.error("Failed to save settings. Please try again.");
+      console.error("Settings save error:", err);
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
@@ -102,23 +168,32 @@ export default function ChurchSettingsPage() {
 
         <div>
           <Label>Church Logo</Label>
-          <div className="mt-1 flex items-center gap-4">
+          <div className="mt-2 flex items-center gap-4">
             {form.logo_url ? (
-              <img src={form.logo_url} alt="Church logo" className="w-20 h-20 rounded-xl object-cover border border-border" />
+              <div className="relative group">
+                <img src={form.logo_url} alt="Church logo" className="w-20 h-20 rounded-xl object-cover border border-border" />
+                <button onClick={() => set("logo_url", "")}
+                  className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-destructive text-white text-xs flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">✕</button>
+              </div>
             ) : (
               <div className="w-20 h-20 rounded-xl border-2 border-dashed border-muted-foreground/30 flex items-center justify-center text-muted-foreground text-xs text-center">No Logo</div>
             )}
             <div className="space-y-2">
               <label className="flex items-center gap-2 cursor-pointer px-4 py-2 rounded-lg border border-dashed border-input hover:border-primary transition-colors text-sm text-muted-foreground">
                 <Upload className="w-4 h-4" />
-                {uploading ? "Uploading..." : "Upload from device"}
-                <input type="file" accept="image/*" className="hidden" onChange={handleLogoUpload} disabled={uploading} />
+                {form.logo_url ? "Change logo" : "Upload from device"}
+                <input type="file" accept="image/*" className="hidden" onChange={handleLogoSelect} />
               </label>
-              {form.logo_url && (
-                <button onClick={() => set("logo_url", "")} className="text-xs text-destructive hover:underline">Remove logo</button>
-              )}
+              <p className="text-xs text-muted-foreground">Or paste a URL:</p>
+              <Input
+                placeholder="https://example.com/logo.png"
+                value={form.logo_url}
+                onChange={e => set("logo_url", e.target.value)}
+                className="text-xs h-8"
+              />
             </div>
           </div>
+          {uploadError && <p className="text-xs text-destructive mt-2">⚠ {uploadError}</p>}
         </div>
       </div>
 
@@ -145,6 +220,26 @@ export default function ChurchSettingsPage() {
       <Button onClick={handleSave} disabled={saving || !form.church_name.trim()} className="gap-2">
         <Save className="w-4 h-4" />{saving ? "Saving..." : "Save Settings"}
       </Button>
+
+      {/* Logo preview confirmation overlay */}
+      {previewFile && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl p-6 max-w-sm w-full space-y-5">
+            <h3 className="font-semibold text-lg text-center">Confirm Logo</h3>
+            <div className="flex justify-center">
+              <img src={previewUrl} alt="Logo preview" className="max-h-52 max-w-full rounded-xl object-contain border border-border" />
+            </div>
+            <p className="text-sm text-muted-foreground text-center">Does this look right for your church logo?</p>
+            {uploadError && <p className="text-sm text-destructive text-center">⚠ {uploadError}</p>}
+            <div className="flex gap-3">
+              <Button variant="outline" className="flex-1" onClick={handleCancelPreview} disabled={uploading}>Choose Different</Button>
+              <Button className="flex-1" onClick={handleConfirmLogo} disabled={uploading}>
+                {uploading ? "Uploading..." : "Use This Logo"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

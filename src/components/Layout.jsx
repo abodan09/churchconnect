@@ -6,76 +6,103 @@ import { useChurchSettings } from "@/lib/ChurchSettingsContext";
 import {
   LayoutDashboard, Users, HandCoins, Receipt, Building2, Layers,
   Mic2, CalendarDays, ClipboardCheck, FileBarChart2, LogOut,
-  Menu, ChevronRight, Home, PieChart, Settings, ShieldCheck
+  Menu, ChevronRight, Home, PieChart, Settings, ShieldCheck,
+  UsersRound, Heart, UserCheck, Megaphone
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
+// Full feature-key → nav item map (used to build filtered dept navs)
+const FEATURE_NAV = {
+  members:               { label: "Members",              path: "/members",              icon: Users },
+  giving:                { label: "Giving",               path: "/giving",               icon: HandCoins },
+  expenditures:          { label: "Expenditures",         path: "/expenditures",         icon: Receipt },
+  properties:            { label: "Properties",           path: "/properties",           icon: Building2 },
+  sermons:               { label: "Sermons",              path: "/sermons",              icon: Mic2 },
+  events:                { label: "Events",               path: "/events",               icon: CalendarDays },
+  attendance:            { label: "Attendance",           path: "/attendance",           icon: ClipboardCheck },
+  "attendance-analytics":{ label: "Attendance Analytics", path: "/attendance-analytics", icon: PieChart },
+  volunteers:            { label: "Volunteers",           path: "/volunteers",           icon: UserCheck },
+  "small-groups":        { label: "Small Groups",         path: "/small-groups",         icon: UsersRound },
+  "pastoral-care":       { label: "Pastoral Care",        path: "/pastoral-care",        icon: Heart },
+  announcements:         { label: "Announcements",        path: "/announcements",        icon: Megaphone },
+  reports:               { label: "Reports",              path: "/reports",              icon: FileBarChart2 },
+};
+
 const NAV = {
   super_admin: [
-    { label: "Dashboard", path: "/", icon: LayoutDashboard },
-    { label: "Members", path: "/members", icon: Users },
-    { label: "Giving", path: "/giving", icon: HandCoins },
-    { label: "Expenditures", path: "/expenditures", icon: Receipt },
-    { label: "Properties", path: "/properties", icon: Building2 },
-    { label: "Departments", path: "/departments", icon: Layers },
-    { label: "Sermons", path: "/sermons", icon: Mic2 },
-    { label: "Events", path: "/events", icon: CalendarDays },
-    { label: "Attendance", path: "/attendance", icon: ClipboardCheck },
+    { label: "Dashboard",            path: "/",                    icon: LayoutDashboard },
+    { label: "Members",              path: "/members",              icon: Users },
+    { label: "Giving",               path: "/giving",               icon: HandCoins },
+    { label: "Expenditures",         path: "/expenditures",         icon: Receipt },
+    { label: "Properties",           path: "/properties",           icon: Building2 },
+    { label: "Departments",          path: "/departments",          icon: Layers },
+    { label: "Small Groups",         path: "/small-groups",         icon: UsersRound },
+    { label: "Sermons",              path: "/sermons",              icon: Mic2 },
+    { label: "Events",               path: "/events",               icon: CalendarDays },
+    { label: "Attendance",           path: "/attendance",           icon: ClipboardCheck },
     { label: "Attendance Analytics", path: "/attendance-analytics", icon: PieChart },
-    { label: "Reports", path: "/reports", icon: FileBarChart2 },
+    { label: "Volunteers",           path: "/volunteers",           icon: UserCheck },
+    { label: "Pastoral Care",        path: "/pastoral-care",        icon: Heart },
+    { label: "Announcements",        path: "/announcements",        icon: Megaphone },
+    { label: "Reports",              path: "/reports",              icon: FileBarChart2 },
   ],
   pastor_admin: [
-    { label: "Dashboard", path: "/", icon: LayoutDashboard },
-    { label: "Members", path: "/members", icon: Users },
-    { label: "Giving", path: "/giving", icon: HandCoins },
-    { label: "Expenditures", path: "/expenditures", icon: Receipt },
-    { label: "Properties", path: "/properties", icon: Building2 },
-    { label: "Sermons", path: "/sermons", icon: Mic2 },
-    { label: "Events", path: "/events", icon: CalendarDays },
-    { label: "Attendance", path: "/attendance", icon: ClipboardCheck },
+    { label: "Dashboard",            path: "/",                    icon: LayoutDashboard },
+    { label: "Members",              path: "/members",              icon: Users },
+    { label: "Giving",               path: "/giving",               icon: HandCoins },
+    { label: "Expenditures",         path: "/expenditures",         icon: Receipt },
+    { label: "Properties",           path: "/properties",           icon: Building2 },
+    { label: "Small Groups",         path: "/small-groups",         icon: UsersRound },
+    { label: "Sermons",              path: "/sermons",              icon: Mic2 },
+    { label: "Events",               path: "/events",               icon: CalendarDays },
+    { label: "Attendance",           path: "/attendance",           icon: ClipboardCheck },
     { label: "Attendance Analytics", path: "/attendance-analytics", icon: PieChart },
-    { label: "Reports", path: "/reports", icon: FileBarChart2 },
+    { label: "Volunteers",           path: "/volunteers",           icon: UserCheck },
+    { label: "Pastoral Care",        path: "/pastoral-care",        icon: Heart },
+    { label: "Announcements",        path: "/announcements",        icon: Megaphone },
+    { label: "Reports",              path: "/reports",              icon: FileBarChart2 },
   ],
   finance_officer: [
-    { label: "Dashboard", path: "/", icon: LayoutDashboard },
-    { label: "Giving", path: "/giving", icon: HandCoins },
+    { label: "Dashboard", path: "/",              icon: LayoutDashboard },
+    { label: "Giving",    path: "/giving",        icon: HandCoins },
     { label: "Expenditures", path: "/expenditures", icon: Receipt },
-    { label: "Reports", path: "/reports", icon: FileBarChart2 },
-  ],
-  department_head: [
-    { label: "Dashboard", path: "/", icon: LayoutDashboard },
-    { label: "Events", path: "/events", icon: CalendarDays },
-    { label: "Attendance", path: "/attendance", icon: ClipboardCheck },
-    { label: "Sermons", path: "/sermons", icon: Mic2 },
-  ],
-  data_entry_staff: [
-    { label: "Dashboard", path: "/", icon: LayoutDashboard },
-    { label: "Members", path: "/members", icon: Users },
-    { label: "Giving", path: "/giving", icon: HandCoins },
-    { label: "Attendance", path: "/attendance", icon: ClipboardCheck },
+    { label: "Reports",   path: "/reports",       icon: FileBarChart2 },
   ],
   member: [
     { label: "My Portal", path: "/portal", icon: Home },
   ],
 };
 
+// dept dashboard item always included for dept roles
+const DEPT_DASHBOARD_ITEM = { label: "Dept. Dashboard", path: "/dept-dashboard", icon: LayoutDashboard };
+
 export default function Layout() {
   const { user, signOut } = useAuth();
   const [open, setOpen] = useState(false);
   const [pendingRequests, setPendingRequests] = useState(0);
+  const [department, setDepartment] = useState(null);
   const location = useLocation();
   const navigate = useNavigate();
   const { settings, loading: settingsLoading } = useChurchSettings();
 
-  // Redirect to setup if no settings configured
   useEffect(() => {
-    if (!settingsLoading && !settings) {
-      navigate("/setup");
-    }
+    if (!settingsLoading && !settings) navigate("/setup");
   }, [settings, settingsLoading, navigate]);
 
-  const role = user?.role || 'member';
+  const role = user?.role || "member";
+  const deptId = user?.data?.department_id;
+  const isDeptRole = ["department_head", "data_entry_staff"].includes(role) || (role === "member" && !!deptId);
 
+  // Load department for dept-scoped roles
+  useEffect(() => {
+    if (isDeptRole && deptId) {
+      entities.Department.filter({ id: deptId })
+        .then(rows => setDepartment(rows[0] || null))
+        .catch(() => {});
+    }
+  }, [role, deptId]);
+
+  // Pending access requests badge
   useEffect(() => {
     if (["super_admin", "pastor_admin"].includes(role)) {
       entities.AccessRequest.filter({ status: "pending" })
@@ -84,18 +111,27 @@ export default function Layout() {
     }
   }, [role]);
 
-  const navItems = NAV[role] || NAV.member;
+  // Build nav items
+  let navItems;
+  if (isDeptRole) {
+    const allowed = (department?.allowed_features || "").split(",").filter(Boolean);
+    const filteredFeatures = allowed.length
+      ? allowed.map(k => FEATURE_NAV[k]).filter(Boolean)
+      : Object.values(FEATURE_NAV); // no restriction if not configured yet
+    navItems = [DEPT_DASHBOARD_ITEM, ...filteredFeatures];
+  } else {
+    navItems = NAV[role] || NAV.member;
+  }
 
-  const handleLogout = () => signOut('/login');
+  const handleLogout = () => signOut("/login");
+
+  // dept colour accent for sidebar header
+  const deptColor = isDeptRole && department?.color ? department.color : null;
 
   return (
     <div className="flex h-screen bg-background overflow-hidden">
-      {/* Mobile overlay */}
-      {open && (
-        <div className="fixed inset-0 bg-black/40 z-20 lg:hidden" onClick={() => setOpen(false)} />
-      )}
+      {open && <div className="fixed inset-0 bg-black/40 z-20 lg:hidden" onClick={() => setOpen(false)} />}
 
-      {/* Sidebar */}
       <aside className={`
         fixed lg:static inset-y-0 left-0 z-30 w-64 flex flex-col bg-primary text-primary-foreground
         transform transition-transform duration-200
@@ -111,7 +147,14 @@ export default function Layout() {
           )}
           <div>
             <p className="font-bold text-sm leading-tight">{settings?.church_name || "ChurchConnect"}</p>
-            <p className="text-xs text-primary-foreground/60">Church CRM</p>
+            {isDeptRole && department ? (
+              <p className="text-xs text-primary-foreground/60 flex items-center gap-1">
+                {deptColor && <span className="w-2 h-2 rounded-full inline-block" style={{ backgroundColor: deptColor }} />}
+                {department.name}
+              </p>
+            ) : (
+              <p className="text-xs text-primary-foreground/60">Church CRM</p>
+            )}
           </div>
         </div>
 
@@ -124,10 +167,7 @@ export default function Layout() {
                 to={path}
                 onClick={() => setOpen(false)}
                 className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors
-                  ${active
-                    ? "bg-white/20 text-white"
-                    : "text-primary-foreground/70 hover:bg-white/10 hover:text-white"
-                  }`}
+                  ${active ? "bg-white/20 text-white" : "text-primary-foreground/70 hover:bg-white/10 hover:text-white"}`}
               >
                 <Icon className="w-4 h-4 flex-shrink-0" />
                 {label}
@@ -183,13 +223,14 @@ export default function Layout() {
         </div>
       </aside>
 
-      {/* Main */}
       <div className="flex-1 flex flex-col overflow-hidden">
         <header className="lg:hidden flex items-center gap-3 px-4 py-3 bg-white border-b border-border">
           <Button variant="ghost" size="icon" onClick={() => setOpen(true)}>
             <Menu className="w-5 h-5" />
           </Button>
-          <span className="font-semibold text-primary">{settings?.church_name || "ChurchConnect"}</span>
+          <span className="font-semibold text-primary">
+            {isDeptRole && department ? department.name : (settings?.church_name || "ChurchConnect")}
+          </span>
         </header>
         <main className="flex-1 overflow-y-auto p-4 md:p-6">
           <Outlet context={{ user }} />

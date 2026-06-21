@@ -31,3 +31,11 @@ dist-ssr
 .vite
 
 .vercel
+
+# Electron build output
+dist-electron/
+C:\ChurchConnect-dist/
+
+# Dev output logs
+dev-error.txt
+dev-output.txt

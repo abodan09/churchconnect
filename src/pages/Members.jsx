@@ -6,9 +6,10 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Plus, Search, Edit, Trash2, UserCheck } from "lucide-react";
 
-const EMPTY = { first_name: "", last_name: "", email: "", phone: "", address: "", department_id: "", department_name: "", join_date: "", membership_status: "active", gender: "", occupation: "", notes: "" };
+const EMPTY = { first_name: "", last_name: "", email: "", phone: "", address: "", department_id: "", department_name: "", join_date: "", membership_status: "active", gender: "", occupation: "", notes: "", baptism_date: "", membership_class_date: "", confirmation_date: "", volunteer_status: "", background_check_date: "" };
 const STATUS_COLOR = { active: "bg-green-100 text-green-700", inactive: "bg-red-100 text-red-700", visitor: "bg-amber-100 text-amber-700" };
 
 export default function Members() {
@@ -127,45 +128,81 @@ export default function Members() {
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader><DialogTitle>{editId ? "Edit Member" : "Add Member"}</DialogTitle></DialogHeader>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-2">
-            {[["first_name","First Name"],["last_name","Last Name"],["email","Email"],["phone","Phone"],["address","Address"],["occupation","Occupation"],["join_date","Join Date"],["notes","Notes"]].map(([k, label]) => (
-              <div key={k} className={k === "address" || k === "notes" ? "sm:col-span-2" : ""}>
-                <Label>{label}</Label>
-                <Input value={form[k] || ""} onChange={e => f(k, e.target.value)} type={k === "join_date" ? "date" : "text"} className="mt-1" />
+          <Tabs defaultValue="info">
+            <TabsList className="w-full"><TabsTrigger value="info" className="flex-1">Info</TabsTrigger><TabsTrigger value="milestones" className="flex-1">Milestones</TabsTrigger></TabsList>
+            <TabsContent value="info">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-3">
+                {[["first_name","First Name"],["last_name","Last Name"],["email","Email"],["phone","Phone"],["address","Address"],["occupation","Occupation"],["join_date","Join Date"],["notes","Notes"]].map(([k, label]) => (
+                  <div key={k} className={k === "address" || k === "notes" ? "sm:col-span-2" : ""}>
+                    <Label>{label}</Label>
+                    <Input value={form[k] || ""} onChange={e => f(k, e.target.value)} type={k === "join_date" ? "date" : "text"} className="mt-1" />
+                  </div>
+                ))}
+                <div>
+                  <Label>Status</Label>
+                  <Select value={form.membership_status} onValueChange={v => f("membership_status", v)}>
+                    <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="active">Active</SelectItem>
+                      <SelectItem value="inactive">Inactive</SelectItem>
+                      <SelectItem value="visitor">Visitor</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label>Department</Label>
+                  <Select value={form.department_id} onValueChange={v => f("department_id", v)}>
+                    <SelectTrigger className="mt-1"><SelectValue placeholder="Select..." /></SelectTrigger>
+                    <SelectContent>
+                      {departments.map(d => <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label>Gender</Label>
+                  <Select value={form.gender} onValueChange={v => f("gender", v)}>
+                    <SelectTrigger className="mt-1"><SelectValue placeholder="Select..." /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="male">Male</SelectItem>
+                      <SelectItem value="female">Female</SelectItem>
+                      <SelectItem value="other">Other</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
-            ))}
-            <div>
-              <Label>Status</Label>
-              <Select value={form.membership_status} onValueChange={v => f("membership_status", v)}>
-                <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="active">Active</SelectItem>
-                  <SelectItem value="inactive">Inactive</SelectItem>
-                  <SelectItem value="visitor">Visitor</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label>Department</Label>
-              <Select value={form.department_id} onValueChange={v => f("department_id", v)}>
-                <SelectTrigger className="mt-1"><SelectValue placeholder="Select..." /></SelectTrigger>
-                <SelectContent>
-                  {departments.map(d => <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label>Gender</Label>
-              <Select value={form.gender} onValueChange={v => f("gender", v)}>
-                <SelectTrigger className="mt-1"><SelectValue placeholder="Select..." /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="male">Male</SelectItem>
-                  <SelectItem value="female">Female</SelectItem>
-                  <SelectItem value="other">Other</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
+            </TabsContent>
+            <TabsContent value="milestones">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-3">
+                <div>
+                  <Label>Baptism Date</Label>
+                  <Input type="date" value={form.baptism_date || ""} onChange={e => f("baptism_date", e.target.value)} className="mt-1" />
+                </div>
+                <div>
+                  <Label>Membership Class Date</Label>
+                  <Input type="date" value={form.membership_class_date || ""} onChange={e => f("membership_class_date", e.target.value)} className="mt-1" />
+                </div>
+                <div>
+                  <Label>Confirmation Date</Label>
+                  <Input type="date" value={form.confirmation_date || ""} onChange={e => f("confirmation_date", e.target.value)} className="mt-1" />
+                </div>
+                <div>
+                  <Label>Background Check Date</Label>
+                  <Input type="date" value={form.background_check_date || ""} onChange={e => f("background_check_date", e.target.value)} className="mt-1" />
+                </div>
+                <div>
+                  <Label>Volunteer Status</Label>
+                  <Select value={form.volunteer_status || ""} onValueChange={v => f("volunteer_status", v)}>
+                    <SelectTrigger className="mt-1"><SelectValue placeholder="Select..." /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="active">Active Volunteer</SelectItem>
+                      <SelectItem value="inactive">Inactive</SelectItem>
+                      <SelectItem value="never">Never Volunteered</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </TabsContent>
+          </Tabs>
           <div className="flex justify-end gap-2 mt-4">
             <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
             <Button onClick={handleSave} className="bg-primary text-primary-foreground">Save</Button>

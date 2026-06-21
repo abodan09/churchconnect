@@ -1,11 +1,25 @@
 // Data client — drop-in replacement for base44.entities.*
 // Usage: import { entities, uploadFile, sendEmail } from '@/api/client'
 
+// In Electron local mode, use the embedded Express server. Otherwise use relative paths (Vercel).
+function getApiBase() {
+  if (typeof window !== 'undefined' && window.electronAPI?.isElectron) {
+    return window.electronAPI.apiBase || 'http://localhost:14747';
+  }
+  return '';
+}
+
 let __token = null;
 export function setAuthToken(t) { __token = t; }
 
 async function getAuthHeader() {
-  // Prefer a fresh Clerk session token; fall back to the cached one
+  // Electron local mode: use token from localStorage
+  if (typeof window !== 'undefined' && window.electronAPI?.isElectron) {
+    const t = localStorage.getItem('churchconnect_local_token');
+    if (t) return { Authorization: `Bearer ${t}` };
+    return {};
+  }
+  // Cloud mode: use Clerk session token
   try {
     const t = await window.Clerk?.session?.getToken();
     if (t) return { Authorization: `Bearer ${t}` };
@@ -14,7 +28,8 @@ async function getAuthHeader() {
 }
 
 async function request(method, path, body) {
-  const res = await fetch(path, {
+  const url = path.startsWith('http') ? path : `${getApiBase()}${path}`;
+  const res = await fetch(url, {
     method,
     headers: { 'Content-Type': 'application/json', ...(await getAuthHeader()) },
     ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
@@ -48,17 +63,22 @@ function makeEntity(resource) {
 }
 
 export const entities = {
-  Member:         makeEntity('members'),
-  Department:     makeEntity('departments'),
-  Event:          makeEntity('events'),
-  Giving:         makeEntity('givings'),
-  Expenditure:    makeEntity('expenditures'),
-  Attendance:     makeEntity('attendances'),
-  Sermon:         makeEntity('sermons'),
-  Property:       makeEntity('properties'),
-  ChurchSettings: makeEntity('churchsettings'),
-  UserProfile:    makeEntity('userprofiles'),
-  AccessRequest:  makeEntity('accessrequests'),
+  Member:           makeEntity('members'),
+  Department:       makeEntity('departments'),
+  Event:            makeEntity('events'),
+  Giving:           makeEntity('givings'),
+  Expenditure:      makeEntity('expenditures'),
+  Attendance:       makeEntity('attendances'),
+  Sermon:           makeEntity('sermons'),
+  Property:         makeEntity('properties'),
+  ChurchSettings:   makeEntity('churchsettings'),
+  UserProfile:      makeEntity('userprofiles'),
+  AccessRequest:    makeEntity('accessrequests'),
+  SmallGroup:       makeEntity('smallgroups'),
+  SmallGroupMember: makeEntity('smallgroupmembers'),
+  PastoralCare:     makeEntity('pastoralcares'),
+  Volunteer:        makeEntity('volunteers'),
+  Announcement:     makeEntity('announcements'),
 };
 
 // File upload — replaces base44.integrations.Core.UploadFile
@@ -68,7 +88,7 @@ export async function uploadFile(file) {
     'X-Filename': file.name,
     ...(await getAuthHeader()),
   };
-  const res = await fetch('/api/upload', { method: 'POST', headers, body: file });
+  const res = await fetch(`${getApiBase()}/api/upload`, { method: 'POST', headers, body: file });
   if (!res.ok) throw new Error('Upload failed');
   return res.json(); // { file_url }
 }
