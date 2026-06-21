@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useAuth as useClerkAuth } from '@clerk/clerk-react';
 import { useAuth } from '@/lib/ClerkAuthContext';
-import { getAuthHeaders } from '@/api/client';
 import { Church, Loader2, ArrowRight, CheckCircle } from 'lucide-react';
 
 function slugify(str) {
@@ -10,6 +10,7 @@ function slugify(str) {
 
 export default function OnboardingPage() {
   const { user, signOut } = useAuth();
+  const { getToken } = useClerkAuth();
   const navigate = useNavigate();
   const [churchName, setChurchName] = useState('');
   const [slug, setSlug] = useState('');
@@ -33,10 +34,10 @@ export default function OnboardingPage() {
     setLoading(true);
     setError('');
     try {
-      const headers = await getAuthHeaders();
+      const token = await getToken() || '';
       const res = await fetch('/api/churches/register', {
         method: 'POST',
-        headers: { ...headers, 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
         body: JSON.stringify({ church_name: churchName.trim() }),
       });
       if (!res.ok) {
