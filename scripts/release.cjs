@@ -64,7 +64,7 @@ console.log('✅ Build artifacts copied');
 // ── 4. Git commit & push ─────────────────────────────────────────────────────
 run('git add -A');
 run(`git commit -m "release: v${newVersion}"`);
-run('git push origin main');
+run('git push origin master');
 console.log('✅ Pushed to GitHub');
 
 // ── 5. GitHub release ────────────────────────────────────────────────────────

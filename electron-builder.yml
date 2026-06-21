@@ -49,6 +49,6 @@ linux:
 
 publish:
   provider: github
-  owner: frozen-bit
+  owner: abodan09
   repo: churchconnect
   releaseType: release
