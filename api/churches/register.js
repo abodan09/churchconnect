@@ -39,19 +39,10 @@ export default async function handler(req, res) {
 
   const prisma = getPrisma();
 
-  // Prevent creating a second church for the same user —
-  // but only if the referenced Church record still actually exists.
-  // A stale church_id (orphaned by a deleted Church) is treated as "no church".
+  // Prevent creating a second church for the same user
   const existing = await prisma.userProfile.findUnique({ where: { clerkId } });
   if (existing?.church_id) {
-    const churchExists = await prisma.church.findUnique({
-      where:  { id: existing.church_id },
-      select: { id: true },
-    });
-    if (churchExists) {
-      return res.status(409).json({ error: 'This account already belongs to a church.' });
-    }
-    // Church was deleted — stale reference, allow fresh registration below
+    return res.status(409).json({ error: 'This account already belongs to a church.' });
   }
 
   // Generate a unique slug
