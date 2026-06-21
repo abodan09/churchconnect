@@ -76,6 +76,10 @@ const AuthenticatedApp = () => {
   if (needsOnboarding && location.pathname !== '/onboarding') {
     return <Navigate to="/onboarding" replace />;
   }
+  // Has a church but somehow landed on /onboarding → send to dashboard
+  if (!needsOnboarding && location.pathname === '/onboarding') {
+    return <Navigate to="/" replace />;
+  }
 
   return (
     <>
