@@ -6,7 +6,7 @@ export default function Login() {
       <SignIn
         routing="path"
         path="/login"
-        afterSignInUrl="/"
+        forceRedirectUrl="/"
         appearance={{
           elements: {
             rootBox: 'w-full max-w-md',

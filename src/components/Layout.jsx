@@ -7,7 +7,7 @@ import {
   LayoutDashboard, Users, HandCoins, Receipt, Building2, Layers,
   Mic2, CalendarDays, ClipboardCheck, FileBarChart2, LogOut,
   Menu, ChevronRight, Home, PieChart, Settings, ShieldCheck,
-  UsersRound, Heart, UserCheck, Megaphone
+  UsersRound, Heart, UserCheck, Megaphone, Zap
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -83,11 +83,12 @@ export default function Layout() {
   const [department, setDepartment] = useState(null);
   const location = useLocation();
   const navigate = useNavigate();
-  const { settings, loading: settingsLoading } = useChurchSettings();
+  const { settings, loading: settingsLoading, reload: reloadSettings } = useChurchSettings();
 
+  // Retry loading settings if the initial fetch failed (e.g. auth not ready yet)
   useEffect(() => {
-    if (!settingsLoading && !settings) navigate("/setup");
-  }, [settings, settingsLoading, navigate]);
+    if (!settingsLoading && !settings) reloadSettings();
+  }, [settingsLoading]);
 
   const role = user?.role || "member";
   const deptId = user?.data?.department_id;
@@ -146,7 +147,13 @@ export default function Layout() {
             </div>
           )}
           <div>
-            <p className="font-bold text-sm leading-tight">{settings?.church_name || "ChurchConnect"}</p>
+            {role === "super_admin" ? (
+              <Link to="/church-settings" className="font-bold text-sm leading-tight hover:underline hover:opacity-80 transition-opacity">
+                {settings?.church_name || "ChurchConnect"}
+              </Link>
+            ) : (
+              <p className="font-bold text-sm leading-tight">{settings?.church_name || "ChurchConnect"}</p>
+            )}
             {isDeptRole && department ? (
               <p className="text-xs text-primary-foreground/60 flex items-center gap-1">
                 {deptColor && <span className="w-2 h-2 rounded-full inline-block" style={{ backgroundColor: deptColor }} />}
@@ -180,7 +187,9 @@ export default function Layout() {
         <div className="px-3 py-4 border-t border-white/10">
           {user && (
             <div className="px-3 mb-3">
-              <p className="text-xs font-semibold text-primary-foreground/80 truncate">{user.full_name || user.email}</p>
+              <Link to="/profile" className="text-xs font-semibold text-primary-foreground/80 truncate hover:underline hover:opacity-80 transition-opacity">
+                {user.full_name || user.email}
+              </Link>
               <p className="text-xs text-primary-foreground/50 capitalize">{role.replace(/_/g, " ")}</p>
             </div>
           )}
@@ -199,6 +208,18 @@ export default function Layout() {
                   {pendingRequests}
                 </span>
               )}
+            </Link>
+          )}
+          {role === "super_admin" && (
+            <Link
+              to="/pricing"
+              onClick={() => setOpen(false)}
+              className={`flex items-center gap-3 w-full px-3 py-2.5 rounded-lg text-sm transition-colors mb-1 ${
+                location.pathname === "/pricing" ? "bg-white/20 text-white" : "text-primary-foreground/70 hover:bg-white/10 hover:text-white"
+              }`}
+            >
+              <Zap className="w-4 h-4" />
+              Upgrade Plan
             </Link>
           )}
           {role === "super_admin" && (

@@ -45,11 +45,18 @@ import AIAssistant from './components/AIAssistant';
 import LocalSetupPage from './pages/LocalSetupPage';
 import LocalLoginPage from './pages/LocalLoginPage';
 import OnboardingPage from './pages/OnboardingPage';
+import PricingPage from './pages/PricingPage';
 import UpdateNotifier from './components/UpdateNotifier';
+import UserProfilePage from './pages/UserProfilePage';
+import JoinChurchPage from './pages/JoinChurchPage';
 
 const IS_ELECTRON = typeof window !== 'undefined' && !!window.electronAPI?.isElectron;
 
-const PUBLIC_PATHS = ['/login', '/register', '/request-access', '/forgot-password', '/reset-password'];
+// Use prefix matching so Clerk's sub-paths (/login/tasks/*, /register/verify-*) are treated as public
+const PUBLIC_PATH_PREFIXES = ['/login', '/register', '/request-access', '/forgot-password', '/reset-password'];
+function isPublicPathname(pathname) {
+  return PUBLIC_PATH_PREFIXES.some(p => pathname === p || pathname.startsWith(p + '/'));
+}
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, isAuthenticated, needsOnboarding } = useAuth();
@@ -67,23 +74,34 @@ const AuthenticatedApp = () => {
     return <UserNotRegisteredError />;
   }
 
-  const isPublicPath = PUBLIC_PATHS.includes(location.pathname);
-  if (!isAuthenticated && !isPublicPath) {
+  if (!isAuthenticated && !isPublicPathname(location.pathname)) {
     return <Navigate to="/login" replace />;
   }
 
-  // Signed-in but no church yet → must complete church onboarding
-  if (needsOnboarding && location.pathname !== '/onboarding') {
+  // Signed-in but no church yet → must complete onboarding or join a church.
+  // Also exempt any Clerk task sub-paths so we don't interrupt the login flow.
+  const ONBOARDING_EXEMPT = ['/onboarding', '/join-church'];
+  if (
+    needsOnboarding &&
+    !ONBOARDING_EXEMPT.includes(location.pathname) &&
+    !isPublicPathname(location.pathname)
+  ) {
     return <Navigate to="/onboarding" replace />;
+  }
+
+  // Church exists but user is on onboarding → send them to the dashboard
+  if (!needsOnboarding && isAuthenticated && location.pathname === '/onboarding') {
+    return <Navigate to="/" replace />;
   }
 
   return (
     <>
       <Routes>
         <Route path="/onboarding" element={<OnboardingPage />} />
+        <Route path="/join-church" element={<JoinChurchPage />} />
         <Route path="/setup" element={<ChurchSetupPage />} />
-        <Route path="/login" element={<Login />} />
-        <Route path="/register" element={<Register />} />
+        <Route path="/login/*" element={<Login />} />
+        <Route path="/register/*" element={<Register />} />
         <Route path="/request-access" element={<RequestAccessPage />} />
         <Route path="/forgot-password" element={<ForgotPassword />} />
         <Route path="/reset-password" element={<ResetPassword />} />
@@ -100,7 +118,9 @@ const AuthenticatedApp = () => {
           <Route path="/attendance" element={<AttendancePage />} />
           <Route path="/reports" element={<FinancialReportsPage />} />
           <Route path="/attendance-analytics" element={<AttendanceAnalyticsPage />} />
+          <Route path="/pricing" element={<PricingPage />} />
           <Route path="/church-settings" element={<ChurchSettingsPage />} />
+          <Route path="/profile" element={<UserProfilePage />} />
           <Route path="/access-requests" element={<AccessRequestsAdminPage />} />
           <Route path="/dept-dashboard" element={<DepartmentDashboard />} />
           <Route path="/small-groups" element={<SmallGroupsPage />} />

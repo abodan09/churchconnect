@@ -10,7 +10,18 @@ function getApiBase() {
 }
 
 let __token = null;
+let __getToken = null;
 export function setAuthToken(t) { __token = t; }
+export function setTokenGetter(fn) { __getToken = fn; }
+
+// Works in both Electron (localStorage) and cloud (Clerk) — safe to call anywhere
+export async function getToken() {
+  if (typeof window !== 'undefined' && window.electronAPI?.isElectron) {
+    return localStorage.getItem('churchconnect_local_token') || null;
+  }
+  try { if (__getToken) { const t = await __getToken(); if (t) return t; } } catch {}
+  return __token || null;
+}
 
 async function getAuthHeader() {
   // Electron local mode: use token from localStorage
@@ -19,11 +30,14 @@ async function getAuthHeader() {
     if (t) return { Authorization: `Bearer ${t}` };
     return {};
   }
-  // Cloud mode: use Clerk session token
+  // Cloud mode: use injected Clerk getToken hook (most reliable)
   try {
-    const t = await window.Clerk?.session?.getToken();
-    if (t) return { Authorization: `Bearer ${t}` };
+    if (__getToken) {
+      const t = await __getToken();
+      if (t) return { Authorization: `Bearer ${t}` };
+    }
   } catch {}
+  // Fallback: cached token set by ClerkAuthContext
   return __token ? { Authorization: `Bearer ${__token}` } : {};
 }
 
@@ -80,6 +94,11 @@ export const entities = {
   Volunteer:        makeEntity('volunteers'),
   Announcement:     makeEntity('announcements'),
 };
+
+// Dedicated settings save — uses church_id-based upsert, bypasses entities handler
+export async function updateSettings(data) {
+  return request('PUT', '/api/settings/update', data);
+}
 
 // File upload — replaces base44.integrations.Core.UploadFile
 export async function uploadFile(file) {
