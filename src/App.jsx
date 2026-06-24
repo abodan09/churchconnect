@@ -195,6 +195,7 @@ function ElectronApp() {
     <>
       {ELECTRON_NAV_ROUTES}
       {isAuthenticated && <AIAssistant />}
+      {isAuthenticated && <WhatsNewModal />}
     </>
   );
 }

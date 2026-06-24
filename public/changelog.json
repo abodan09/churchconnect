@@ -15,7 +15,9 @@
     "fixes": [
       "Fixed infinite login loop when Clerk redirected to /login/tasks/choose-organization",
       "Fixed registration page appearing as two separate screens — now a single combined page",
-      "Fixed settings save endpoint missing in the offline (desktop) version"
+      "Fixed settings save endpoint missing in the offline (desktop) version",
+      "Fixed profile link in desktop app sidebar causing a blank 'Page Not Found' screen",
+      "Fixed What's New update modal not appearing in the desktop (offline) version"
     ]
   },
   {

@@ -11,6 +11,8 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
+const IS_ELECTRON = typeof window !== 'undefined' && !!window.electronAPI?.isElectron;
+
 // Full feature-key → nav item map (used to build filtered dept navs)
 const FEATURE_NAV = {
   members:               { label: "Members",              path: "/members",              icon: Users },
@@ -187,9 +189,13 @@ export default function Layout() {
         <div className="px-3 py-4 border-t border-white/10">
           {user && (
             <div className="px-3 mb-3">
-              <Link to="/profile" className="text-xs font-semibold text-primary-foreground/80 truncate hover:underline hover:opacity-80 transition-opacity">
-                {user.full_name || user.email}
-              </Link>
+              {IS_ELECTRON ? (
+                <p className="text-xs font-semibold text-primary-foreground/80 truncate">{user.full_name || user.email}</p>
+              ) : (
+                <Link to="/profile" className="text-xs font-semibold text-primary-foreground/80 truncate hover:underline hover:opacity-80 transition-opacity">
+                  {user.full_name || user.email}
+                </Link>
+              )}
               <p className="text-xs text-primary-foreground/50 capitalize">{role.replace(/_/g, " ")}</p>
             </div>
           )}

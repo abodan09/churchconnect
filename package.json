@@ -19,7 +19,8 @@
     "electron:build:all": "npm run build && electron-builder -wml",
     "release": "node scripts/release.cjs patch",
     "release:minor": "node scripts/release.cjs minor",
-    "release:major": "node scripts/release.cjs major"
+    "release:major": "node scripts/release.cjs major",
+    "release:current": "node scripts/release.cjs --current"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.104.2",

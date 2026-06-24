@@ -1,10 +1,11 @@
 'use strict';
 /**
  * ChurchConnect release script
- * Usage: node scripts/release.cjs [patch|minor|major]
- *   patch  → 1.0.1 → 1.0.2  (bug fixes, default)
- *   minor  → 1.0.1 → 1.1.0  (new features)
- *   major  → 1.0.1 → 2.0.0  (breaking changes)
+ * Usage: node scripts/release.cjs [patch|minor|major|--current]
+ *   patch     → 1.0.1 → 1.0.2  (bug fixes, default)
+ *   minor     → 1.0.1 → 1.1.0  (new features)
+ *   major     → 1.0.1 → 2.0.0  (breaking changes)
+ *   --current → publish with the version already in package.json (no bump)
  */
 
 const { execSync } = require('child_process');
@@ -27,9 +28,10 @@ function bumpVersion(current, type) {
   return `${maj}.${min}.${pat + 1}`;
 }
 
-const bumpType = process.argv[2] || 'patch';
-if (!['patch', 'minor', 'major'].includes(bumpType)) {
-  console.error('Usage: node scripts/release.cjs [patch|minor|major]');
+const bumpArg = process.argv[2] || 'patch';
+const noBump = bumpArg === '--current';
+if (!noBump && !['patch', 'minor', 'major'].includes(bumpArg)) {
+  console.error('Usage: node scripts/release.cjs [patch|minor|major|--current]');
   process.exit(1);
 }
 
@@ -37,13 +39,16 @@ if (!['patch', 'minor', 'major'].includes(bumpType)) {
 const pkgPath = path.join(ROOT, 'package.json');
 const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
 const oldVersion = pkg.version;
-const newVersion = bumpVersion(oldVersion, bumpType);
+const newVersion = noBump ? oldVersion : bumpVersion(oldVersion, bumpArg);
 
-console.log(`\n🚀 ChurchConnect: ${oldVersion} → ${newVersion} (${bumpType})\n`);
-
-pkg.version = newVersion;
-fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n');
-console.log(`✅ package.json updated to ${newVersion}`);
+if (noBump) {
+  console.log(`\n🚀 ChurchConnect: publishing current version ${newVersion} (no bump)\n`);
+} else {
+  console.log(`\n🚀 ChurchConnect: ${oldVersion} → ${newVersion} (${bumpArg})\n`);
+  pkg.version = newVersion;
+  fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n');
+  console.log(`✅ package.json updated to ${newVersion}`);
+}
 
 // ── 2. Build Vite + Electron ─────────────────────────────────────────────────
 run('npm run electron:build');
@@ -74,11 +79,28 @@ run('git push origin master');
 console.log('✅ Pushed to GitHub');
 
 // ── 5. GitHub release ────────────────────────────────────────────────────────
-const releaseNotes = bumpType === 'patch'
-  ? `## ChurchConnect v${newVersion} — Bug Fix Release\n\nBug fixes and stability improvements.\n\n### Download\n- **ChurchConnect-Setup.exe** — Recommended installer\n- **ChurchConnect-Portable.exe** — Portable, no install required\n\n### Requirements\n- Windows 10 / 11 (64-bit)`
-  : bumpType === 'minor'
-  ? `## ChurchConnect v${newVersion} — Feature Release\n\nNew features and improvements.\n\n### Download\n- **ChurchConnect-Setup.exe** — Recommended installer\n- **ChurchConnect-Portable.exe** — Portable, no install required\n\n### Requirements\n- Windows 10 / 11 (64-bit)`
-  : `## ChurchConnect v${newVersion} — Major Release\n\nMajor new version with significant changes.\n\n### Download\n- **ChurchConnect-Setup.exe** — Recommended installer\n- **ChurchConnect-Portable.exe** — Portable, no install required\n\n### Requirements\n- Windows 10 / 11 (64-bit)`;
+// Pull changelog entry for this version from public/changelog.json
+const changelogPath = path.join(ROOT, 'public', 'changelog.json');
+let changelogEntry = null;
+try {
+  const changelog = JSON.parse(fs.readFileSync(changelogPath, 'utf8'));
+  changelogEntry = changelog.find(e => e.version === newVersion);
+} catch { /* ignore if missing */ }
+
+let releaseNotes = `## ChurchConnect v${newVersion}`;
+if (changelogEntry?.title) releaseNotes += ` — ${changelogEntry.title}`;
+releaseNotes += '\n\n';
+if (changelogEntry?.features?.length) {
+  releaseNotes += '### New Features\n';
+  changelogEntry.features.forEach(f => { releaseNotes += `- ${f}\n`; });
+  releaseNotes += '\n';
+}
+if (changelogEntry?.fixes?.length) {
+  releaseNotes += '### Bug Fixes\n';
+  changelogEntry.fixes.forEach(f => { releaseNotes += `- ${f}\n`; });
+  releaseNotes += '\n';
+}
+releaseNotes += `### Download\n- **ChurchConnect-Setup.exe** — Recommended installer\n- **ChurchConnect-Portable.exe** — Portable, no install required\n\n### Requirements\n- Windows 10 / 11 (64-bit)`;
 
 const notesFile = path.join(DIST, 'release-notes.md');
 fs.writeFileSync(notesFile, releaseNotes);
