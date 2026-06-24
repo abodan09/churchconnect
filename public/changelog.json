@@ -1,0 +1,84 @@
+[
+  {
+    "version": "1.1.0",
+    "date": "2026-06-24",
+    "title": "Brand Theme Colors & Member Join Flow",
+    "features": [
+      "Church theme color system — set Primary, Secondary, and Accent colors in Church Settings to match your brand identity",
+      "Auto-extract colors from your uploaded church logo with a single click using canvas color analysis",
+      "Logo watermark — your church logo now appears as a subtle background watermark across all pages",
+      "Member sign-up flow — members can sign up independently and request to join a church by entering its URL slug",
+      "Admin approval for member join requests — church admins review and approve/reject new member requests from the Access Requests page",
+      "Clickable church name in sidebar links to Church Settings (super admin only)",
+      "Clickable admin name in sidebar links to User Profile page"
+    ],
+    "fixes": [
+      "Fixed infinite login loop when Clerk redirected to /login/tasks/choose-organization",
+      "Fixed registration page appearing as two separate screens — now a single combined page",
+      "Fixed settings save endpoint missing in the offline (desktop) version"
+    ]
+  },
+  {
+    "version": "1.0.3",
+    "date": "2026-05-10",
+    "title": "Attendance Analytics & Access Requests",
+    "features": [
+      "Attendance analytics page with visual trends and inactive member alerts",
+      "Access requests admin page with approve, reject, and revoke controls",
+      "Department color accent shown in sidebar for department-scoped roles",
+      "AI assistant improvements with finance and pastoral care context"
+    ],
+    "fixes": [
+      "Fixed token handling in Electron (offline) mode for access request approvals",
+      "Improved financial reports page with better chart rendering"
+    ]
+  },
+  {
+    "version": "1.0.2",
+    "date": "2026-04-15",
+    "title": "Small Groups & Pastoral Care",
+    "features": [
+      "Small groups management — create and manage Bible study, prayer, and outreach groups",
+      "Pastoral care module — log prayer requests, visitations, and counseling sessions privately",
+      "Volunteer tracking with event assignment, role, and check-in status",
+      "Announcements with audience targeting by department and priority"
+    ],
+    "fixes": [
+      "Fixed department head not seeing their assigned features",
+      "Fixed giving records not filtering by date range correctly"
+    ]
+  },
+  {
+    "version": "1.0.1",
+    "date": "2026-03-20",
+    "title": "Departments & Role-Based Access",
+    "features": [
+      "Department dashboards with custom feature sets per department",
+      "Role-based access control — super admin, pastor admin, finance officer, department head, data entry staff, member",
+      "Department heads can manage their own teams and events independently",
+      "Properties and assets inventory with condition and assignment tracking"
+    ],
+    "fixes": [
+      "Fixed member search not matching partial names",
+      "Fixed currency symbol not updating in reports after settings change"
+    ]
+  },
+  {
+    "version": "1.0.0",
+    "date": "2026-03-01",
+    "title": "Initial Release",
+    "features": [
+      "Member management with full profiles, milestones, photos, and membership status",
+      "Giving and tithe tracking with payment method categorization",
+      "Expenditure tracking with approval workflow",
+      "Attendance recording by event or service",
+      "Event calendar with department-aware scheduling",
+      "Sermon archive with audio/video links, scripture references, and tags",
+      "Financial reports — giving summaries, expense breakdowns, and trends",
+      "Desktop (offline) version for Windows — no internet required",
+      "Web version with real-time multi-user collaboration",
+      "Built-in AI assistant for pastoral insights and communications"
+    ],
+    "fixes": []
+  }
+]

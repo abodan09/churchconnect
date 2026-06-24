@@ -47,6 +47,7 @@ import LocalLoginPage from './pages/LocalLoginPage';
 import OnboardingPage from './pages/OnboardingPage';
 import PricingPage from './pages/PricingPage';
 import UpdateNotifier from './components/UpdateNotifier';
+import WhatsNewModal from './components/WhatsNewModal';
 import UserProfilePage from './pages/UserProfilePage';
 import JoinChurchPage from './pages/JoinChurchPage';
 
@@ -131,6 +132,7 @@ const AuthenticatedApp = () => {
         <Route path="*" element={<PageNotFound />} />
       </Routes>
       {isAuthenticated && <AIAssistant />}
+      {isAuthenticated && <WhatsNewModal />}
     </>
   );
 };
