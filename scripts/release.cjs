@@ -74,9 +74,13 @@ console.log('✅ Build artifacts copied');
 
 // ── 4. Git commit & push ─────────────────────────────────────────────────────
 run('git add -A');
-run(`git commit -m "release: v${newVersion}"`);
-run('git push origin master');
-console.log('✅ Pushed to GitHub');
+try {
+  run(`git commit -m "release: v${newVersion}"`);
+  run('git push origin master');
+  console.log('✅ Pushed to GitHub');
+} catch {
+  console.log('ℹ️  Nothing to commit — code already up to date on GitHub');
+}
 
 // ── 5. GitHub release ────────────────────────────────────────────────────────
 // Pull changelog entry for this version from public/changelog.json
