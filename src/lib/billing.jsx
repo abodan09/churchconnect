@@ -3,22 +3,26 @@ import { Lock } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 const BILLING_ENABLED = import.meta.env.VITE_BILLING_ENABLED === 'true';
+const IS_ELECTRON = typeof window !== 'undefined' && !!window.electronAPI?.isElectron;
 
-/**
- * Wraps Clerk's has() with a dev bypass.
- * Set VITE_BILLING_ENABLED=true in production to enforce gates.
- * Without it, every check returns true so all features are accessible.
- */
-export function useBilling() {
-  const { has } = useAuth();
-
-  function check(params) {
-    if (!BILLING_ENABLED) return true;
-    return !!has?.(params);
-  }
-
-  return { has: check, enabled: BILLING_ENABLED };
+// No-op hook — never calls Clerk's useAuth; safe in Electron or when billing is off
+function useNoopBilling() {
+  return { has: () => true, enabled: false };
 }
+
+// Clerk-backed hook — only valid inside a <ClerkProvider>
+function useClerkBilling() {
+  const { has } = useAuth();
+  return {
+    has: (params) => (BILLING_ENABLED ? !!has?.(params) : true),
+    enabled: BILLING_ENABLED,
+  };
+}
+
+// Resolved once at module-load time so the hook identity is stable across renders.
+// Importing useAuth at the top level is fine — the error only fires when the hook
+// is *called* outside ClerkProvider, which useNoopBilling never does.
+export const useBilling = (IS_ELECTRON || !BILLING_ENABLED) ? useNoopBilling : useClerkBilling;
 
 /**
  * Declarative gate — mirrors Clerk's <Show when={{ plan/feature/permission }}>.
