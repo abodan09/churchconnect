@@ -40,11 +40,15 @@ export default function OnboardingPage() {
         headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
         body: JSON.stringify({ church_name: churchName.trim() }),
       });
+      if (res.status === 409) {
+        // Church already exists for this account — just go to the dashboard
+        window.location.href = '/';
+        return;
+      }
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         throw new Error(err.error || 'Failed to create church');
       }
-      // Reload the page so ClerkAuthContext re-fetches the profile with church_id
       window.location.href = '/';
     } catch (err) {
       setError(err.message);

@@ -4,6 +4,7 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LineChart, L
 import { format, subDays, startOfWeek, startOfMonth, parseISO, differenceInDays } from "date-fns";
 import { Users, TrendingUp, AlertTriangle, CheckCircle } from "lucide-react";
 import StatCard from "@/components/StatCard";
+import { BillingShow, UpgradePrompt } from "@/lib/billing";
 
 export default function AttendanceAnalyticsPage() {
   const [attendance, setAttendance] = useState([]);
@@ -100,7 +101,12 @@ export default function AttendanceAnalyticsPage() {
 
   if (loading) return <div className="flex items-center justify-center h-64"><div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" /></div>;
 
+  // BillingShow with feature check — declarative feature gate (Clerk B2B billing)
   return (
+    <BillingShow
+      when={{ feature: 'attendance_analytics' }}
+      fallback={<UpgradePrompt feature="attendance_analytics" message="Attendance Analytics requires the Starter plan or above." />}
+    >
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold">Attendance Analytics</h1>
@@ -185,5 +191,6 @@ export default function AttendanceAnalyticsPage() {
         </div>
       </div>
     </div>
+    </BillingShow>
   );
 }

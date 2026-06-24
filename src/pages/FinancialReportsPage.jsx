@@ -8,11 +8,14 @@ import StatCard from "@/components/StatCard";
 import { HandCoins } from "lucide-react";
 import { jsPDF } from "jspdf";
 import { format } from "date-fns";
+import { useBilling, UpgradePrompt } from "@/lib/billing";
 
 const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
 const YEARS = [2023, 2024, 2025, 2026].map(String);
 
 export default function FinancialReportsPage() {
+  // has({ plan: 'pro' }) — imperative plan check (Clerk B2B billing)
+  const { has } = useBilling();
   const [giving, setGiving] = useState([]);
   const [expenditures, setExpenditures] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -23,6 +26,11 @@ export default function FinancialReportsPage() {
   const [generated, setGenerated] = useState(false);
 
   useEffect(() => { loadData(); }, []);
+
+  // Gate: Pro plan required (all hooks must be above this check)
+  if (!has({ plan: 'pro' })) {
+    return <UpgradePrompt plan="pro" message="Financial Reports are available on the Pro plan." />;
+  }
 
   async function loadData() {
     const [g, e] = await Promise.all([entities.Giving.list("-date", 2000), entities.Expenditure.list("-date", 2000)]);

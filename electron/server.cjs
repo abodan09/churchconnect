@@ -114,6 +114,36 @@ function createServer(userDataPath) {
     }
   });
 
+  // ── Settings upsert ──────────────────────────────────────────────────────────
+
+  app.put('/api/settings/update', authMiddleware, (req, res) => {
+    try {
+      const { church_name, logo_url, language, currency_code, currency_symbol, theme_primary, theme_secondary, theme_tertiary } = req.body || {};
+      if (!church_name?.trim()) return res.status(400).json({ error: 'church_name is required' });
+
+      const existing = _prisma.churchSettings.findMany({ take: 1 })[0];
+      const data = {
+        church_name: church_name.trim(),
+        ...(logo_url !== undefined && { logo_url }),
+        ...(language && { language }),
+        ...(currency_code && { currency_code }),
+        ...(currency_symbol && { currency_symbol }),
+        ...(theme_primary !== undefined && { theme_primary: theme_primary || null }),
+        ...(theme_secondary !== undefined && { theme_secondary: theme_secondary || null }),
+        ...(theme_tertiary !== undefined && { theme_tertiary: theme_tertiary || null }),
+      };
+
+      const record = existing
+        ? _prisma.churchSettings.update({ where: { id: existing.id }, data })
+        : _prisma.churchSettings.create({ data });
+
+      return res.json(record);
+    } catch (err) {
+      console.error('[settings/update]', err.message);
+      return res.status(500).json({ error: err.message });
+    }
+  });
+
   // ── Entities CRUD ─────────────────────────────────────────────────────────────
 
   // Soft auth: populate req.localUser if a valid token is present (not required)

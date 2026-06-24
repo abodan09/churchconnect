@@ -244,8 +244,22 @@ export default function Layout() {
         </div>
       </aside>
 
-      <div className="flex-1 flex flex-col overflow-hidden">
-        <header className="lg:hidden flex items-center gap-3 px-4 py-3 bg-white border-b border-border">
+      <div className="flex-1 flex flex-col overflow-hidden relative">
+        {/* Logo watermark — barely visible brand background */}
+        {settings?.logo_url && (
+          <div
+            className="absolute inset-0 flex items-center justify-center pointer-events-none select-none z-0"
+            aria-hidden="true"
+          >
+            <img
+              src={settings.logo_url}
+              alt=""
+              className="w-3/4 max-w-[520px] object-contain"
+              style={{ opacity: 0.05 }}
+            />
+          </div>
+        )}
+        <header className="relative z-10 lg:hidden flex items-center gap-3 px-4 py-3 bg-white border-b border-border">
           <Button variant="ghost" size="icon" onClick={() => setOpen(true)}>
             <Menu className="w-5 h-5" />
           </Button>
@@ -253,7 +267,7 @@ export default function Layout() {
             {isDeptRole && department ? department.name : (settings?.church_name || "ChurchConnect")}
           </span>
         </header>
-        <main className="flex-1 overflow-y-auto p-4 md:p-6">
+        <main className="relative z-10 flex-1 overflow-y-auto p-4 md:p-6">
           <Outlet context={{ user }} />
         </main>
       </div>

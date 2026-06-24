@@ -13,14 +13,13 @@ datasource db {
 // Every other model carries church_id and is scoped to exactly one Church.
 
 model Church {
-  id         String   @id @default(cuid())
-  name       String
-  slug       String   @unique
-  clerkOrgId String?  @unique
-  plan       String   @default("trial") // trial | starter | pro
-  is_active  Boolean  @default(true)
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  plan      String   @default("trial")   // trial | starter | pro
+  is_active Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 // ── Users ─────────────────────────────────────────────────────────────────────
@@ -73,40 +72,40 @@ model Member {
 // ── Departments ───────────────────────────────────────────────────────────────
 
 model Department {
-  id                   String   @id @default(cuid())
-  church_id            String
-  name                 String
-  description          String?
-  head_name            String?
-  head_user_id         String?
-  media_upload_enabled Boolean  @default(false)
-  allowed_media_types  String   @default("none")
-  is_active            Boolean  @default(true)
-  color                String?
-  allowed_features     String?
-  created_by_id        String?
-  createdAt            DateTime @default(now())
-  updatedAt            DateTime @updatedAt
+  id                    String   @id @default(cuid())
+  church_id             String
+  name                  String
+  description           String?
+  head_name             String?
+  head_user_id          String?
+  media_upload_enabled  Boolean  @default(false)
+  allowed_media_types   String   @default("none")
+  is_active             Boolean  @default(true)
+  color                 String?
+  allowed_features      String?
+  created_by_id         String?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
 }
 
 // ── Events ────────────────────────────────────────────────────────────────────
 
 model Event {
-  id              String   @id @default(cuid())
-  church_id       String
-  title           String
-  description     String?
-  department_id   String?
-  department_name String?
-  start_datetime  String
-  end_datetime    String?
-  location        String?
-  event_type      String   @default("service")
-  is_public       Boolean  @default(true)
-  created_by_name String?
-  created_by_id   String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id               String   @id @default(cuid())
+  church_id        String
+  title            String
+  description      String?
+  department_id    String?
+  department_name  String?
+  start_datetime   String
+  end_datetime     String?
+  location         String?
+  event_type       String   @default("service")
+  is_public        Boolean  @default(true)
+  created_by_name  String?
+  created_by_id    String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 }
 
 // ── Giving ────────────────────────────────────────────────────────────────────
@@ -131,22 +130,22 @@ model Giving {
 // ── Expenditures ──────────────────────────────────────────────────────────────
 
 model Expenditure {
-  id              String   @id @default(cuid())
-  church_id       String
-  date            String
-  category        String
-  description     String
-  amount          Float
-  department_id   String?
-  department_name String?
-  approval_status String   @default("pending")
-  approved_by     String?
-  approved_date   String?
-  receipt_url     String?
-  notes           String?
-  created_by_id   String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id               String   @id @default(cuid())
+  church_id        String
+  date             String
+  category         String
+  description      String
+  amount           Float
+  department_id    String?
+  department_name  String?
+  approval_status  String   @default("pending")
+  approved_by      String?
+  approved_date    String?
+  receipt_url      String?
+  notes            String?
+  created_by_id    String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 }
 
 // ── Attendance ────────────────────────────────────────────────────────────────
@@ -194,22 +193,22 @@ model Sermon {
 // ── Properties ────────────────────────────────────────────────────────────────
 
 model Property {
-  id                       String   @id @default(cuid())
-  church_id                String
-  type                     String
-  name                     String
-  description              String?
-  location_or_serial       String?
-  purchase_date            String?
-  purchase_value           Float?
-  current_condition        String?
-  assigned_department_id   String?
-  assigned_department_name String?
-  maintenance_notes        String?
-  photo_url                String?
-  created_by_id            String?
-  createdAt                DateTime @default(now())
-  updatedAt                DateTime @updatedAt
+  id                        String   @id @default(cuid())
+  church_id                 String
+  type                      String
+  name                      String
+  description               String?
+  location_or_serial        String?
+  purchase_date             String?
+  purchase_value            Float?
+  current_condition         String?
+  assigned_department_id    String?
+  assigned_department_name  String?
+  maintenance_notes         String?
+  photo_url                 String?
+  created_by_id             String?
+  createdAt                 DateTime @default(now())
+  updatedAt                 DateTime @updatedAt
 }
 
 // ── Church Settings ───────────────────────────────────────────────────────────
@@ -222,9 +221,6 @@ model ChurchSettings {
   language        String   @default("en")
   currency_code   String   @default("EUR")
   currency_symbol String   @default("€")
-  theme_primary   String?
-  theme_secondary String?
-  theme_tertiary  String?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 }
@@ -232,21 +228,20 @@ model ChurchSettings {
 // ── Access Requests ───────────────────────────────────────────────────────────
 
 model AccessRequest {
-  id               String   @id @default(cuid())
-  church_id        String
-  clerk_id         String?
-  name             String
-  email            String
-  social_platform  String   @default("other")
-  social_handle    String?
-  message          String?
-  status           String   @default("pending")
-  requested_at     String?
-  reviewed_by      String?
-  reviewed_at      String?
-  rejection_reason String?
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  id                String   @id @default(cuid())
+  church_id         String
+  name              String
+  email             String
+  social_platform   String   @default("other")
+  social_handle     String?
+  message           String?
+  status            String   @default("pending")
+  requested_at      String?
+  reviewed_by       String?
+  reviewed_at       String?
+  rejection_reason  String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 }
 
 // ── Small Groups ──────────────────────────────────────────────────────────────

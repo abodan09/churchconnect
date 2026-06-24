@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { Bot, X, Send, Loader2, ChevronDown, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useChurchSettings } from '@/lib/ChurchSettingsContext';
+import { useBilling } from '@/lib/billing';
 
 const AGENTS = [
   { id: 'pastoral', label: 'Pastoral', description: 'Members, care & general questions' },
@@ -45,8 +46,13 @@ export default function AIAssistant() {
   const bottomRef = useRef(null);
   const inputRef = useRef(null);
   const { settings } = useChurchSettings();
+  // has({ permission: 'org:ai:access' }) — permission check (Clerk B2B billing)
+  const { has } = useBilling();
 
   const selectedAgent = AGENTS.find(a => a.id === agentType);
+
+  // Hide the entire assistant if the org doesn't have AI access permission
+  if (!has({ permission: 'org:ai:access' })) return null;
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });

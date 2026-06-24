@@ -214,6 +214,9 @@ CREATE TABLE IF NOT EXISTS church_settings (
   language TEXT DEFAULT 'en',
   currency_code TEXT DEFAULT 'EUR',
   currency_symbol TEXT DEFAULT '€',
+  theme_primary TEXT,
+  theme_secondary TEXT,
+  theme_tertiary TEXT,
   createdAt TEXT DEFAULT (datetime('now')),
   updatedAt TEXT DEFAULT (datetime('now'))
 );
@@ -336,6 +339,10 @@ function initDb(userDataPath) {
   _db.pragma('journal_mode = WAL');
   _db.pragma('foreign_keys = ON');
   _db.exec(SCHEMA_SQL);
+  // Migrate existing databases — add new columns if not present
+  for (const col of ['theme_primary', 'theme_secondary', 'theme_tertiary']) {
+    try { _db.exec(`ALTER TABLE church_settings ADD COLUMN ${col} TEXT`); } catch { /* already exists */ }
+  }
   return _db;
 }
 

@@ -1,17 +1,11 @@
-import { createClerkClient } from '@clerk/backend';
+import { verifyToken } from '@clerk/backend';
 import { PrismaClient } from '@prisma/client';
 
 let _prisma = null;
-let _clerk  = null;
 
 function getPrisma() {
   if (!_prisma) _prisma = new PrismaClient();
   return _prisma;
-}
-
-function getClerk() {
-  if (!_clerk) _clerk = createClerkClient({ secretKey: process.env.CLERK_SECRET_KEY });
-  return _clerk;
 }
 
 const MODEL_MAP = {
@@ -51,12 +45,19 @@ const MODELS_WITH_CREATOR = new Set([
  * Verify the Clerk JWT and return { clerkId, churchId }.
  * churchId is resolved from UserProfile — null for brand-new users with no profile yet.
  */
+const AUTHORIZED_PARTIES = process.env.CLERK_AUTHORIZED_PARTIES
+  ? process.env.CLERK_AUTHORIZED_PARTIES.split(',').map(s => s.trim())
+  : ['https://church.frozenbit.eu', 'http://localhost:5173', 'http://localhost:3000'];
+
 async function resolveIdentity(req) {
   const auth = req.headers.authorization;
   if (!auth?.startsWith('Bearer ')) return { clerkId: null, churchId: null };
   try {
     const token   = auth.split(' ')[1];
-    const payload = await getClerk().verifyToken(token);
+    const payload = await verifyToken(token, {
+      secretKey: process.env.CLERK_SECRET_KEY,
+      authorizedParties: AUTHORIZED_PARTIES,
+    });
     const clerkId = payload?.sub;
     if (!clerkId) return { clerkId: null, churchId: null };
 
