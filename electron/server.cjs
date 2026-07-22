@@ -175,8 +175,15 @@ function createServer(userDataPath) {
         const prismaField = sortField ? (FIELD_MAP[sortField] || sortField) : null;
         const orderBy = prismaField ? { [prismaField]: sort.startsWith('-') ? 'desc' : 'asc' } : { createdAt: 'desc' };
         const take = limit ? parseInt(limit) : 500;
-        const where = Object.keys(filter).length ? filter : undefined;
-        const records = db.findMany({ where, orderBy, take });
+        // Support range/prefix filters via `<field>_<op>` query params
+        // (e.g. date_startsWith=2026-07). Plain keys stay exact-match.
+        const where = {};
+        for (const [k, val] of Object.entries(filter)) {
+          const m = k.match(/^(.+)_(gte|lte|gt|lt|startsWith|contains)$/);
+          if (m) { const [, f, op] = m; where[f] = { ...(where[f] || {}), [op]: val }; }
+          else where[k] = val;
+        }
+        const records = db.findMany({ where: Object.keys(where).length ? where : undefined, orderBy, take });
         return res.json(records);
       }
 

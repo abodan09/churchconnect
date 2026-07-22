@@ -118,8 +118,16 @@ export default async function handler(req, res) {
       const orderBy     = prismaField ? { [prismaField]: sort.startsWith('-') ? 'desc' : 'asc' } : { createdAt: 'desc' };
       const take        = limit ? parseInt(limit) : 500;
 
+      // Support range/prefix filters via `<field>_<op>` query params
+      // (e.g. date_startsWith=2026-07). Plain keys stay exact-match.
+      const where = {};
+      for (const [k, val] of Object.entries(filter)) {
+        const m = k.match(/^(.+)_(gte|lte|gt|lt|startsWith|contains)$/);
+        if (m) { const [, f, op] = m; where[f] = { ...(where[f] || {}), [op]: val }; }
+        else where[k] = val;
+      }
+
       // Inject church scope (UserProfile: skip gate for clerkId-only queries)
-      const where = { ...filter };
       if (CHURCH_SCOPED.has(model)) {
         where.church_id = churchId;
       } else if (isUserProfileResource && !filter.clerkId) {

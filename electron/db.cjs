@@ -361,6 +361,21 @@ function buildWhere(where) {
       parts.push(`"${k}" IS NULL`);
     } else if (typeof v === 'boolean') {
       parts.push(`"${k}" = ${v ? 1 : 0}`);
+    } else if (typeof v === 'object') {
+      // Operator object, e.g. { gte, lte, gt, lt, equals, startsWith, contains }.
+      for (const [op, opv] of Object.entries(v)) {
+        if (opv === undefined || opv === null) continue;
+        switch (op) {
+          case 'gte':        parts.push(`"${k}" >= ?`);   values.push(opv); break;
+          case 'lte':        parts.push(`"${k}" <= ?`);   values.push(opv); break;
+          case 'gt':         parts.push(`"${k}" > ?`);    values.push(opv); break;
+          case 'lt':         parts.push(`"${k}" < ?`);    values.push(opv); break;
+          case 'equals':     parts.push(`"${k}" = ?`);    values.push(opv); break;
+          case 'startsWith': parts.push(`"${k}" LIKE ?`); values.push(`${opv}%`); break;
+          case 'contains':   parts.push(`"${k}" LIKE ?`); values.push(`%${opv}%`); break;
+          default: break;
+        }
+      }
     } else {
       parts.push(`"${k}" = ?`);
       values.push(v);
