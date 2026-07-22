@@ -6,7 +6,9 @@ import { Label } from "@/components/ui/label";
 import { FileBarChart2, Download, Send } from "lucide-react";
 import StatCard from "@/components/StatCard";
 import { HandCoins } from "lucide-react";
-import { jsPDF } from "jspdf";
+import { generateFinancialReportPDF } from "@/lib/financeReport";
+import { isInMonth } from "@/lib/finance";
+import { useChurchSettings } from "@/lib/ChurchSettingsContext";
 import { format } from "date-fns";
 import { useBilling, UpgradePrompt } from "@/lib/billing";
 
@@ -16,6 +18,7 @@ const YEARS = [2023, 2024, 2025, 2026].map(String);
 export default function FinancialReportsPage() {
   // has({ plan: 'pro' }) — imperative plan check (Clerk B2B billing)
   const { has } = useBilling();
+  const { fmt, settings } = useChurchSettings();
   const [giving, setGiving] = useState([]);
   const [expenditures, setExpenditures] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -25,32 +28,39 @@ export default function FinancialReportsPage() {
   const [emailTarget, setEmailTarget] = useState("");
   const [generated, setGenerated] = useState(false);
 
-  useEffect(() => { loadData(); }, []);
+  useEffect(() => { loadData(); }, [month, year]);
 
   // Gate: Pro plan required (all hooks must be above this check)
   if (!has({ plan: 'pro' })) {
     return <UpgradePrompt plan="pro" message="Financial Reports are available on the Pro plan." />;
   }
 
+  // Load only the selected month's records (server-side prefix filter) so the
+  // totals stay complete regardless of how much history the church has.
   async function loadData() {
-    const [g, e] = await Promise.all([entities.Giving.list("-date", 2000), entities.Expenditure.list("-date", 2000)]);
-    setGiving(g); setExpenditures(e); setLoading(false);
+    setLoading(true);
+    const prefix = `${year}-${String(parseInt(month) + 1).padStart(2, "0")}`;
+    try {
+      const [g, e] = await Promise.all([
+        entities.Giving.filter({ date_startsWith: prefix, sort: "-date", limit: 10000 }),
+        entities.Expenditure.filter({ date_startsWith: prefix, sort: "-date", limit: 10000 }),
+      ]);
+      setGiving(g); setExpenditures(e);
+    } catch (err) {
+      console.error("FinancialReports loadData failed:", err);
+      setGiving([]); setExpenditures([]);
+    } finally {
+      setLoading(false);
+    }
   }
 
   const monthIdx = parseInt(month);
   const yearNum = parseInt(year);
 
-  const filteredGiving = giving.filter(g => {
-    if (!g.date) return false;
-    const d = new Date(g.date);
-    return d.getMonth() === monthIdx && d.getFullYear() === yearNum;
-  });
-
-  const filteredExp = expenditures.filter(e => {
-    if (!e.date) return false;
-    const d = new Date(e.date);
-    return d.getMonth() === monthIdx && d.getFullYear() === yearNum;
-  });
+  // Timezone-safe month filtering — matches the shared PDF generator so the
+  // on-screen figures and the downloaded/emailed report always agree.
+  const filteredGiving = giving.filter(g => isInMonth(g.date, monthIdx, yearNum));
+  const filteredExp = expenditures.filter(e => isInMonth(e.date, monthIdx, yearNum));
 
   const totalTithes = filteredGiving.filter(g=>g.type==="tithe").reduce((s,g)=>s+(g.amount||0),0);
   const totalOfferings = filteredGiving.filter(g=>g.type!=="tithe").reduce((s,g)=>s+(g.amount||0),0);
@@ -58,131 +68,15 @@ export default function FinancialReportsPage() {
   const approvedExp = filteredExp.filter(e=>e.approval_status==="approved").reduce((s,e)=>s+(e.amount||0),0);
   const netBalance = totalIncome - approvedExp;
 
-  const fmt = n => `€${Number(n||0).toLocaleString("en",{minimumFractionDigits:2})}`;
-
   function generatePDF() {
-    const doc = new jsPDF();
-    const title = `${MONTHS[monthIdx]} ${year} — Financial Report`;
-
-    // Giving by type breakdown
-    const givingByType = {};
-    filteredGiving.forEach(g => {
-      const t = g.type || "other";
-      givingByType[t] = (givingByType[t] || 0) + (g.amount || 0);
+    generateFinancialReportPDF({
+      monthIdx,
+      year: yearNum,
+      giving,
+      expenditures,
+      fmt,
+      churchName: settings?.church_name,
     });
-    // Expenditures by category breakdown
-    const expByCategory = {};
-    filteredExp.filter(e => e.approval_status === "approved").forEach(e => {
-      const c = e.category || "other";
-      expByCategory[c] = (expByCategory[c] || 0) + (e.amount || 0);
-    });
-    const genDate = format(new Date(), "MMMM d, yyyy");
-
-    doc.setFillColor(45, 106, 79);
-    doc.rect(0, 0, 210, 40, "F");
-    doc.setTextColor(255, 255, 255);
-    doc.setFontSize(20);
-    doc.setFont("helvetica", "bold");
-    doc.text("ChurchConnect CRM", 15, 18);
-    doc.setFontSize(13);
-    doc.setFont("helvetica", "normal");
-    doc.text(title, 15, 30);
-
-    doc.setTextColor(100, 100, 100);
-    doc.setFontSize(9);
-    doc.text(`Generated: ${genDate}`, 15, 48);
-
-    // Summary box
-    doc.setDrawColor(200, 200, 200);
-    doc.setFillColor(248, 250, 248);
-    doc.roundedRect(15, 55, 180, 50, 3, 3, "FD");
-    doc.setTextColor(45, 106, 79);
-    doc.setFontSize(11);
-    doc.setFont("helvetica", "bold");
-    doc.text("Financial Summary", 20, 65);
-    doc.setFont("helvetica", "normal");
-    doc.setTextColor(50, 50, 50);
-    doc.setFontSize(10);
-    doc.text(`Total Tithes:`, 20, 76); doc.text(fmt(totalTithes), 120, 76);
-    doc.text(`Total Offerings:`, 20, 84); doc.text(fmt(totalOfferings), 120, 84);
-    doc.text(`Total Expenditures:`, 20, 92); doc.text(fmt(approvedExp), 120, 92);
-    doc.setFont("helvetica", "bold");
-    doc.setTextColor(netBalance >= 0 ? 45 : 200, netBalance >= 0 ? 106 : 30, netBalance >= 0 ? 79 : 30);
-    doc.text(`Net Balance:`, 20, 100); doc.text(fmt(netBalance), 120, 100);
-
-    // Giving by type breakdown
-    let yb = 115;
-    doc.setTextColor(45, 106, 79); doc.setFont("helvetica", "bold"); doc.setFontSize(11);
-    doc.text("Giving by Type", 15, yb); yb += 7;
-    doc.setFontSize(9); doc.setTextColor(100,100,100); doc.setFont("helvetica","bold");
-    doc.text("Type", 15, yb); doc.text("Amount", 155, yb); yb += 4;
-    doc.setDrawColor(200,200,200); doc.line(15, yb, 195, yb); yb += 5;
-    doc.setFont("helvetica","normal"); doc.setTextColor(50,50,50);
-    Object.entries(givingByType).forEach(([type, amt]) => {
-      doc.text(type.replace(/_/g," "), 15, yb); doc.text(fmt(amt), 155, yb); yb += 6;
-    });
-
-    // Expenditures by category breakdown
-    yb += 4;
-    if (yb > 230) { doc.addPage(); yb = 20; }
-    doc.setTextColor(45, 106, 79); doc.setFont("helvetica", "bold"); doc.setFontSize(11);
-    doc.text("Expenditures by Category", 15, yb); yb += 7;
-    doc.setFontSize(9); doc.setTextColor(100,100,100); doc.setFont("helvetica","bold");
-    doc.text("Category", 15, yb); doc.text("Amount", 155, yb); yb += 4;
-    doc.line(15, yb, 195, yb); yb += 5;
-    doc.setFont("helvetica","normal"); doc.setTextColor(50,50,50);
-    Object.entries(expByCategory).forEach(([cat, amt]) => {
-      doc.text(cat, 15, yb); doc.text(fmt(amt), 155, yb); yb += 6;
-    });
-
-    // Giving details
-    let y = 118;
-    doc.setTextColor(45, 106, 79);
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(11);
-    doc.text("Giving Records", 15, y);
-    y += 8;
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(9);
-    doc.setTextColor(100, 100, 100);
-    doc.text("Member", 15, y); doc.text("Date", 80, y); doc.text("Type", 115, y); doc.text("Amount", 165, y);
-    y += 4; doc.setDrawColor(200, 200, 200); doc.line(15, y, 195, y); y += 5;
-
-    doc.setFont("helvetica", "normal");
-    doc.setTextColor(50, 50, 50);
-    filteredGiving.slice(0, 30).forEach(g => {
-      if (y > 260) { doc.addPage(); y = 20; }
-      doc.text((g.member_name||"Unknown").substring(0,30), 15, y);
-      doc.text(g.date||"", 80, y);
-      doc.text((g.type||"").replace(/_/g," "), 115, y);
-      doc.text(fmt(g.amount), 155, y);
-      y += 7;
-    });
-
-    // Expenditures
-    y += 6;
-    if (y > 240) { doc.addPage(); y = 20; }
-    doc.setTextColor(45, 106, 79);
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(11);
-    doc.text("Approved Expenditures", 15, y);
-    y += 8;
-    doc.setFontSize(9);
-    doc.setTextColor(100, 100, 100);
-    doc.text("Description", 15, y); doc.text("Category", 90, y); doc.text("Date", 135, y); doc.text("Amount", 165, y);
-    y += 4; doc.line(15, y, 195, y); y += 5;
-    doc.setFont("helvetica", "normal");
-    doc.setTextColor(50, 50, 50);
-    filteredExp.filter(e=>e.approval_status==="approved").slice(0,25).forEach(e => {
-      if (y > 260) { doc.addPage(); y = 20; }
-      doc.text((e.description||"").substring(0,35), 15, y);
-      doc.text((e.category||""), 90, y);
-      doc.text(e.date||"", 135, y);
-      doc.text(fmt(e.amount), 155, y);
-      y += 7;
-    });
-
-    doc.save(`financial-report-${MONTHS[monthIdx].toLowerCase()}-${year}.pdf`);
     setGenerated(true);
   }
 
