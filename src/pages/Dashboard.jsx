@@ -1,18 +1,33 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useNavigate, useOutletContext } from "react-router-dom";
 import { entities } from "@/api/client";
 import StatCard from "@/components/StatCard";
-import { Users, HandCoins, Receipt, Building2, CalendarDays, TrendingUp } from "lucide-react";
+import MonthlyFinanceCard from "@/components/MonthlyFinanceCard";
+import { Button } from "@/components/ui/button";
+import { useChurchSettings } from "@/lib/ChurchSettingsContext";
+import { weeklyBreakdown, MONTHS, MONTHS_SHORT } from "@/lib/finance";
+import { generateFinancialReportPDF } from "@/lib/financeReport";
+import { Users, HandCoins, Receipt, CalendarDays, TrendingUp, ChevronLeft, ChevronRight, Download } from "lucide-react";
 import { format } from "date-fns";
 
 export default function Dashboard() {
   const { user } = useOutletContext() || {};
   const navigate = useNavigate();
-  const [stats, setStats] = useState({ members: 0, totalTithes: 0, totalOfferings: 0, totalExpenses: 0 });
+  const { fmt, settings } = useChurchSettings() || {};
+  const formatMoney = fmt || ((n) => `€${Number(n || 0).toLocaleString("en", { minimumFractionDigits: 2 })}`);
+
+  const now = new Date();
+  const [selMonth, setSelMonth] = useState(now.getMonth());
+  const [selYear, setSelYear] = useState(now.getFullYear());
+
+  const [memberCount, setMemberCount] = useState(0);
+  const [monthGiving, setMonthGiving] = useState([]);
+  const [monthExp, setMonthExp] = useState([]);
   const [birthdayMembers, setBirthdayMembers] = useState([]);
   const [recentGiving, setRecentGiving] = useState([]);
   const [upcomingEvents, setUpcomingEvents] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [monthBusy, setMonthBusy] = useState(false);
 
   useEffect(() => {
     const role = user?.role === "admin" ? "super_admin" : (user?.role || "member");
@@ -22,19 +37,35 @@ export default function Dashboard() {
       navigate("/dept-dashboard");
       return;
     }
-    loadData();
+    initLoad();
   }, [user]);
 
-  async function loadData() {
+  // Reload the finance cards when the user navigates to a different month.
+  // The first render is handled by initLoad(), so skip it here.
+  const firstMonth = useRef(true);
+  useEffect(() => {
+    if (firstMonth.current) { firstMonth.current = false; return; }
+    (async () => {
+      setMonthBusy(true);
+      await loadMonth(selMonth, selYear);
+      setMonthBusy(false);
+    })();
+  }, [selMonth, selYear]);
+
+  async function initLoad() {
     setLoading(true);
+    await Promise.all([loadGlobal(), loadMonth(selMonth, selYear)]);
+    setLoading(false);
+  }
+
+  async function loadGlobal() {
     try {
-      const [members, giving, expenditures, events] = await Promise.all([
+      const [members, events, recent] = await Promise.all([
         entities.Member.list("-created_date", 1000),
-        entities.Giving.list("-date", 1000),
-        entities.Expenditure.list("-date", 1000),
         entities.Event.list("start_datetime", 20),
+        entities.Giving.list("-date", 5),
       ]);
-      const now = new Date().toISOString();
+      const nowIso = new Date().toISOString();
       const currentMonth = new Date().getMonth() + 1;
       const parseDob = (str) => { try { const d = new Date(str); return isNaN(d) ? null : d; } catch { return null; } };
       const bdays = members.filter(m => {
@@ -47,35 +78,116 @@ export default function Dashboard() {
         return dayA - dayB;
       });
       setBirthdayMembers(bdays);
-      const totalTithes = giving.filter(g => g.type === "tithe").reduce((s, g) => s + (g.amount || 0), 0);
-      const totalOfferings = giving.filter(g => g.type !== "tithe").reduce((s, g) => s + (g.amount || 0), 0);
-      const totalExpenses = expenditures.filter(e => e.approval_status === "approved").reduce((s, e) => s + (e.amount || 0), 0);
-      setStats({ members: members.length, totalTithes, totalOfferings, totalExpenses });
-      setRecentGiving(giving.slice(0, 5));
-      setUpcomingEvents(events.filter(e => e.start_datetime >= now).slice(0, 5));
+      setMemberCount(members.length);
+      setRecentGiving(recent);
+      setUpcomingEvents(events.filter(e => e.start_datetime >= nowIso).slice(0, 5));
     } catch (err) {
-      console.error('Dashboard loadData failed:', err);
-    } finally {
-      setLoading(false);
+      console.error('Dashboard loadGlobal failed:', err);
     }
   }
 
-  const fmt = n => `€${Number(n).toLocaleString("en", { minimumFractionDigits: 2 })}`;
+  // Load only the selected month's records (server-side prefix filter), so a
+  // church with any volume of history always sees complete monthly totals.
+  // A sequence guard drops out-of-order responses when the user clicks quickly.
+  const loadSeq = useRef(0);
+  async function loadMonth(month, year) {
+    const seq = ++loadSeq.current;
+    const prefix = `${year}-${String(month + 1).padStart(2, "0")}`;
+    try {
+      const [g, e] = await Promise.all([
+        entities.Giving.filter({ date_startsWith: prefix, sort: "-date", limit: 10000 }),
+        entities.Expenditure.filter({ date_startsWith: prefix, sort: "-date", limit: 10000 }),
+      ]);
+      if (seq !== loadSeq.current) return;
+      setMonthGiving(g);
+      setMonthExp(e);
+    } catch (err) {
+      if (seq !== loadSeq.current) return;
+      console.error('Dashboard loadMonth failed:', err);
+      setMonthGiving([]);
+      setMonthExp([]);
+    }
+  }
+
+  // Per-month weekly breakdowns for the selected month.
+  const { tithes, offerings, expenses } = useMemo(() => {
+    const tithesRecords = monthGiving.filter(g => g.type === "tithe");
+    const offeringsRecords = monthGiving.filter(g => g.type !== "tithe");
+    const approvedExpRecords = monthExp.filter(e => e.approval_status === "approved");
+    return {
+      tithes: weeklyBreakdown(tithesRecords, selYear, selMonth),
+      offerings: weeklyBreakdown(offeringsRecords, selYear, selMonth),
+      expenses: weeklyBreakdown(approvedExpRecords, selYear, selMonth),
+    };
+  }, [monthGiving, monthExp, selMonth, selYear]);
+
+  function shiftMonth(delta) {
+    let m = selMonth + delta;
+    let y = selYear;
+    if (m < 0) { m = 11; y -= 1; }
+    if (m > 11) { m = 0; y += 1; }
+    setSelMonth(m);
+    setSelYear(y);
+  }
+
+  const isCurrentMonth = selYear === now.getFullYear() && selMonth === now.getMonth();
+  const monthBadge = `${MONTHS_SHORT[selMonth]} ${selYear}`;
+
+  function handleDownload() {
+    generateFinancialReportPDF({
+      monthIdx: selMonth,
+      year: selYear,
+      giving: monthGiving,
+      expenditures: monthExp,
+      fmt: formatMoney,
+      churchName: settings?.church_name,
+    });
+  }
 
   if (loading) return <div className="flex items-center justify-center h-64"><div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" /></div>;
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-foreground">Dashboard</h1>
-        <p className="text-muted-foreground text-sm">Welcome back — here's your church at a glance.</p>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-foreground">Dashboard</h1>
+          <p className="text-muted-foreground text-sm">Welcome back — here's your church at a glance.</p>
+        </div>
+        <div className="flex items-center gap-2 self-start sm:self-auto">
+          <div className="flex items-center gap-1 rounded-lg border border-border bg-white px-1 py-1 shadow-sm">
+            <button
+              onClick={() => shiftMonth(-1)}
+              aria-label="Previous month"
+              className="p-1.5 rounded-md hover:bg-muted transition-colors"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+            <span className="text-sm font-semibold text-foreground px-2 text-center min-w-[128px] flex items-center justify-center gap-2">
+              {MONTHS[selMonth]} {selYear}
+              {monthBusy && <span className="w-3 h-3 border-2 border-primary border-t-transparent rounded-full animate-spin" />}
+            </span>
+            <button
+              onClick={() => shiftMonth(1)}
+              disabled={isCurrentMonth}
+              aria-label="Next month"
+              className="p-1.5 rounded-md hover:bg-muted transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
+          <Button onClick={handleDownload} className="gap-2 bg-primary text-primary-foreground">
+            <Download className="w-4 h-4" />
+            <span className="hidden sm:inline">Download PDF</span>
+            <span className="sm:hidden">PDF</span>
+          </Button>
+        </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-        <StatCard title="Total Members" value={stats.members} icon={Users} color="green" />
-        <StatCard title="Total Tithes" value={fmt(stats.totalTithes)} icon={HandCoins} color="amber" />
-        <StatCard title="Total Offerings" value={fmt(stats.totalOfferings)} icon={TrendingUp} color="blue" />
-        <StatCard title="Approved Expenses" value={fmt(stats.totalExpenses)} icon={Receipt} color="red" />
+      <div className={`grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 items-start transition-opacity ${monthBusy ? "opacity-60" : ""}`}>
+        <StatCard title="Total Members" value={memberCount} icon={Users} color="green" />
+        <MonthlyFinanceCard title="Total Tithes" total={tithes.total} weeks={tithes.weeks} monthLabel={monthBadge} icon={HandCoins} color="amber" fmt={formatMoney} />
+        <MonthlyFinanceCard title="Total Offerings" total={offerings.total} weeks={offerings.weeks} monthLabel={monthBadge} icon={TrendingUp} color="blue" fmt={formatMoney} />
+        <MonthlyFinanceCard title="Approved Expenses" total={expenses.total} weeks={expenses.weeks} monthLabel={monthBadge} icon={Receipt} color="red" fmt={formatMoney} />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -89,7 +201,7 @@ export default function Dashboard() {
                     <p className="font-medium">{g.member_name || "Unknown"}</p>
                     <p className="text-muted-foreground capitalize">{g.type?.replace(/_/g, " ")} · {g.date}</p>
                   </div>
-                  <span className="font-semibold text-primary">{fmt(g.amount)}</span>
+                  <span className="font-semibold text-primary">{formatMoney(g.amount)}</span>
                 </div>
               ))}
             </div>
