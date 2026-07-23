@@ -28,22 +28,21 @@ export default function FinancialReportsPage() {
   const [emailTarget, setEmailTarget] = useState("");
   const [generated, setGenerated] = useState(false);
 
-  useEffect(() => { loadData(); }, [month, year]);
+  useEffect(() => { loadData(); }, []);
 
   // Gate: Pro plan required (all hooks must be above this check)
   if (!has({ plan: 'pro' })) {
     return <UpgradePrompt plan="pro" message="Financial Reports are available on the Pro plan." />;
   }
 
-  // Load only the selected month's records (server-side prefix filter) so the
-  // totals stay complete regardless of how much history the church has.
+  // Load the church's full history once; switching month/year then filters in
+  // memory so it feels instant (no spinner or refetch on every change).
   async function loadData() {
     setLoading(true);
-    const prefix = `${year}-${String(parseInt(month) + 1).padStart(2, "0")}`;
     try {
       const [g, e] = await Promise.all([
-        entities.Giving.filter({ date_startsWith: prefix, sort: "-date", limit: 10000 }),
-        entities.Expenditure.filter({ date_startsWith: prefix, sort: "-date", limit: 10000 }),
+        entities.Giving.list("-date", 100000),
+        entities.Expenditure.list("-date", 100000),
       ]);
       setGiving(g); setExpenditures(e);
     } catch (err) {
@@ -63,8 +62,9 @@ export default function FinancialReportsPage() {
   const filteredExp = expenditures.filter(e => isInMonth(e.date, monthIdx, yearNum));
 
   const totalTithes = filteredGiving.filter(g=>g.type==="tithe").reduce((s,g)=>s+(g.amount||0),0);
-  const totalOfferings = filteredGiving.filter(g=>g.type!=="tithe").reduce((s,g)=>s+(g.amount||0),0);
-  const totalIncome = totalTithes + totalOfferings;
+  const totalOfferings = filteredGiving.filter(g=>g.type==="offering").reduce((s,g)=>s+(g.amount||0),0);
+  const totalOthers = filteredGiving.filter(g=>g.type!=="tithe" && g.type!=="offering").reduce((s,g)=>s+(g.amount||0),0);
+  const totalIncome = totalTithes + totalOfferings + totalOthers;
   const approvedExp = filteredExp.filter(e=>e.approval_status==="approved").reduce((s,e)=>s+(e.amount||0),0);
   const netBalance = totalIncome - approvedExp;
 
@@ -76,6 +76,7 @@ export default function FinancialReportsPage() {
       expenditures,
       fmt,
       churchName: settings?.church_name,
+      splitOthers: true,
     });
     setGenerated(true);
   }
@@ -89,6 +90,7 @@ export default function FinancialReportsPage() {
         <tr><th>Item</th><th>Amount</th></tr>
         <tr><td>Total Tithes</td><td>${fmt(totalTithes)}</td></tr>
         <tr><td>Total Offerings</td><td>${fmt(totalOfferings)}</td></tr>
+        <tr><td>Total Others</td><td>${fmt(totalOthers)}</td></tr>
         <tr><td>Total Income</td><td><strong>${fmt(totalIncome)}</strong></td></tr>
         <tr><td>Approved Expenditures</td><td>${fmt(approvedExp)}</td></tr>
         <tr><td><strong>Net Balance</strong></td><td><strong>${fmt(netBalance)}</strong></td></tr>
@@ -108,7 +110,7 @@ export default function FinancialReportsPage() {
   if (loading) return <div className="flex items-center justify-center h-64"><div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" /></div>;
 
   return (
-    <div className="space-y-6 max-w-4xl">
+    <div className="space-y-6 max-w-5xl mx-auto">
       <div><h1 className="text-2xl font-bold">Financial Reports</h1><p className="text-muted-foreground text-sm">Generate and share monthly financial summaries</p></div>
 
       <div className="bg-white rounded-xl border border-border p-5 shadow-sm">
@@ -131,9 +133,10 @@ export default function FinancialReportsPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
         <StatCard title="Tithes" value={fmt(totalTithes)} icon={HandCoins} color="green" />
         <StatCard title="Offerings" value={fmt(totalOfferings)} icon={HandCoins} color="blue" />
+        <StatCard title="Others" value={fmt(totalOthers)} icon={HandCoins} color="purple" />
         <StatCard title="Expenditures" value={fmt(approvedExp)} icon={HandCoins} color="red" />
         <StatCard title="Net Balance" value={fmt(netBalance)} icon={HandCoins} color={netBalance >= 0 ? "green" : "red"} />
       </div>

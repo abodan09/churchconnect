@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { useChurchSettings } from "@/lib/ChurchSettingsContext";
 import { weeklyBreakdown, MONTHS, MONTHS_SHORT } from "@/lib/finance";
 import { generateFinancialReportPDF } from "@/lib/financeReport";
-import { Users, HandCoins, Receipt, CalendarDays, TrendingUp, ChevronLeft, ChevronRight, Download } from "lucide-react";
+import { Users, HandCoins, Receipt, CalendarDays, TrendingUp, Coins, ChevronLeft, ChevronRight, Download } from "lucide-react";
 import { format } from "date-fns";
 
 export default function Dashboard() {
@@ -110,13 +110,15 @@ export default function Dashboard() {
   }
 
   // Per-month weekly breakdowns for the selected month.
-  const { tithes, offerings, expenses } = useMemo(() => {
+  const { tithes, offerings, others, expenses } = useMemo(() => {
     const tithesRecords = monthGiving.filter(g => g.type === "tithe");
-    const offeringsRecords = monthGiving.filter(g => g.type !== "tithe");
+    const offeringsRecords = monthGiving.filter(g => g.type === "offering");
+    const othersRecords = monthGiving.filter(g => g.type !== "tithe" && g.type !== "offering");
     const approvedExpRecords = monthExp.filter(e => e.approval_status === "approved");
     return {
       tithes: weeklyBreakdown(tithesRecords, selYear, selMonth),
       offerings: weeklyBreakdown(offeringsRecords, selYear, selMonth),
+      others: weeklyBreakdown(othersRecords, selYear, selMonth),
       expenses: weeklyBreakdown(approvedExpRecords, selYear, selMonth),
     };
   }, [monthGiving, monthExp, selMonth, selYear]);
@@ -141,6 +143,7 @@ export default function Dashboard() {
       expenditures: monthExp,
       fmt: formatMoney,
       churchName: settings?.church_name,
+      splitOthers: true,
     });
   }
 
@@ -183,10 +186,11 @@ export default function Dashboard() {
         </div>
       </div>
 
-      <div className={`grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 items-start transition-opacity ${monthBusy ? "opacity-60" : ""}`}>
+      <div className={`grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-4 items-start transition-opacity ${monthBusy ? "opacity-60" : ""}`}>
         <StatCard title="Total Members" value={memberCount} icon={Users} color="green" />
         <MonthlyFinanceCard title="Total Tithes" total={tithes.total} weeks={tithes.weeks} monthLabel={monthBadge} icon={HandCoins} color="amber" fmt={formatMoney} />
         <MonthlyFinanceCard title="Total Offerings" total={offerings.total} weeks={offerings.weeks} monthLabel={monthBadge} icon={TrendingUp} color="blue" fmt={formatMoney} />
+        <MonthlyFinanceCard title="Other Inflow" total={others.total} weeks={others.weeks} monthLabel={monthBadge} icon={Coins} color="purple" fmt={formatMoney} />
         <MonthlyFinanceCard title="Approved Expenses" total={expenses.total} weeks={expenses.weeks} monthLabel={monthBadge} icon={Receipt} color="red" fmt={formatMoney} />
       </div>
 
