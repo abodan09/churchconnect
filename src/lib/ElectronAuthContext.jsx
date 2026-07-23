@@ -10,26 +10,38 @@ export function ElectronAuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
   const [hasSetup, setHasSetup] = useState(null); // null = unknown
 
-  // Check if first-run setup needed
+  // On launch: if this device is already activated, silently issue a fresh
+  // local session (never ask again). Otherwise, flag first-run activation.
   useEffect(() => {
-    fetch(`${API_BASE}/api/auth/status`)
-      .then(r => r.json())
-      .then(d => setHasSetup(d.hasUsers))
-      .catch(() => setHasSetup(false));
-  }, []);
-
-  // Restore session from localStorage
-  useEffect(() => {
-    const token = localStorage.getItem(TOKEN_KEY);
-    if (!token) { setLoading(false); return; }
-    fetch(`${API_BASE}/api/auth/me`, { headers: { Authorization: `Bearer ${token}` } })
-      .then(r => r.ok ? r.json() : null)
-      .then(user => {
-        if (user) setLocalUser({ ...user, token });
-        else localStorage.removeItem(TOKEN_KEY);
-      })
-      .catch(() => localStorage.removeItem(TOKEN_KEY))
-      .finally(() => setLoading(false));
+    (async () => {
+      let hasUsers = false;
+      try {
+        const s = await fetch(`${API_BASE}/api/auth/status`).then(r => r.json());
+        hasUsers = !!s.hasUsers;
+        setHasSetup(hasUsers);
+      } catch {
+        setHasSetup(false);
+        setLoading(false);
+        return;
+      }
+      // A failure of the auto-login step must NOT clear hasSetup — the device is
+      // still activated; we just fall through to the offline fallback login.
+      if (hasUsers) {
+        try {
+          const r = await fetch(`${API_BASE}/api/auth/session`, { method: 'POST' });
+          if (r.ok) {
+            const { token, user } = await r.json();
+            localStorage.setItem(TOKEN_KEY, token);
+            setLocalUser({ ...user, token });
+          } else {
+            localStorage.removeItem(TOKEN_KEY);
+          }
+        } catch {
+          localStorage.removeItem(TOKEN_KEY);
+        }
+      }
+      setLoading(false);
+    })();
   }, []);
 
   const login = useCallback(async (email, password) => {
@@ -65,6 +77,25 @@ export function ElectronAuthProvider({ children }) {
     return user;
   }, []);
 
+  // First-launch activation: verify cloud credentials online, then this device
+  // is remembered locally and opens offline forever after.
+  const cloudSetup = useCallback(async (email, password) => {
+    const res = await fetch(`${API_BASE}/api/auth/cloud-setup`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Activation failed');
+    }
+    const { token, user } = await res.json();
+    localStorage.setItem(TOKEN_KEY, token);
+    setHasSetup(true);
+    setLocalUser({ ...user, token });
+    return user;
+  }, []);
+
   const signOut = useCallback((url) => {
     localStorage.removeItem(TOKEN_KEY);
     setLocalUser(null);
@@ -89,6 +120,7 @@ export function ElectronAuthProvider({ children }) {
     hasSetup,
     login,
     setup,
+    cloudSetup,
     signOut,
     navigateToLogin: () => {},
   };

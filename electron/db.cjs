@@ -497,6 +497,9 @@ const localUsers = {
   findById(id) {
     return getDb().prepare('SELECT * FROM local_users WHERE id = ?').get(id);
   },
+  first() {
+    return getDb().prepare('SELECT * FROM local_users ORDER BY created_at ASC LIMIT 1').get();
+  },
   updateDepartment(id, department_id) {
     getDb().prepare('UPDATE local_users SET department_id = ? WHERE id = ?').run(department_id, id);
   },

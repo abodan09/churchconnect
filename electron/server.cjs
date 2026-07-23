@@ -5,6 +5,10 @@ const fs = require('fs');
 const { createPrismaClient, localUsers } = require('./db.cjs');
 const { hashPassword, verifyPassword, signToken, authMiddleware } = require('./auth.cjs');
 
+// Where the standalone app verifies cloud credentials on first launch.
+const CLOUD_URL = process.env.CHURCHCONNECT_CLOUD_URL || 'https://church.frozenbit.eu';
+const LOCAL_PORT = 14747;
+
 const MODEL_MAP = {
   members: 'member',
   memberrelationships: 'memberRelationship',
@@ -38,11 +42,17 @@ function createServer(userDataPath) {
   _prisma = createPrismaClient();
   const app = express();
 
+  // The Electron renderer loads this server's own origin (http://localhost:14747),
+  // so it is same-origin and needs no CORS. Deliberately sending NO
+  // Access-Control-Allow-Origin stops a malicious page in the user's browser from
+  // reading responses from this local server cross-origin (e.g. minting a session
+  // token). Also reject any request not addressed to the loopback host, which
+  // blocks DNS-rebinding attacks.
   app.use((req, res, next) => {
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization,X-Filename');
-    if (req.method === 'OPTIONS') return res.status(204).end();
+    const host = req.headers.host;
+    if (host !== `localhost:${LOCAL_PORT}` && host !== `127.0.0.1:${LOCAL_PORT}`) {
+      return res.status(403).end();
+    }
     next();
   });
 
@@ -73,6 +83,49 @@ function createServer(userDataPath) {
     } catch (err) {
       res.status(500).json({ error: err.message });
     }
+  });
+
+  // First-launch activation: verify the user's CLOUD credentials online, then
+  // create the local account so the app works offline afterwards.
+  app.post('/api/auth/cloud-setup', async (req, res) => {
+    try {
+      if (localUsers.count() > 0) return res.status(409).json({ error: 'This device is already activated.' });
+      const { email, password } = req.body || {};
+      if (!email || !password) return res.status(400).json({ error: 'Email and password required' });
+
+      let cloud;
+      try {
+        const r = await fetch(`${CLOUD_URL}/api/desktop/verify`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password }),
+        });
+        cloud = await r.json().catch(() => ({}));
+        if (!r.ok || !cloud.ok) {
+          const status = (r.status === 401 || r.status === 429) ? r.status : 502;
+          return res.status(status).json({ error: cloud.error || 'Could not verify your ChurchConnect account.' });
+        }
+      } catch {
+        return res.status(503).json({ error: 'No internet connection. The first sign-in needs internet to verify your ChurchConnect account — after that the app works fully offline.' });
+      }
+
+      const full_name = [cloud.user?.first_name, cloud.user?.last_name].filter(Boolean).join(' ') || email;
+      const password_hash = await hashPassword(password);
+      const user = localUsers.create({ email, password_hash, full_name, role: 'super_admin' });
+      const token = signToken({ sub: user.id, email: user.email, role: user.role, full_name: user.full_name });
+      res.json({ token, user: { id: user.id, email: user.email, full_name: user.full_name, role: user.role } });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Auto-login for an already-activated device (never ask again). The embedded
+  // server binds to localhost, so only this desktop app can reach it.
+  app.post('/api/auth/session', (req, res) => {
+    const user = localUsers.first();
+    if (!user) return res.status(404).json({ error: 'Not activated' });
+    const token = signToken({ sub: user.id, email: user.email, role: user.role, full_name: user.full_name, department_id: user.department_id });
+    res.json({ token, user: { id: user.id, email: user.email, full_name: user.full_name, role: user.role, department_id: user.department_id } });
   });
 
   app.post('/api/auth/login', async (req, res) => {
