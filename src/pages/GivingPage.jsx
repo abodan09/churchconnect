@@ -11,8 +11,8 @@ import StatCard from "@/components/StatCard";
 import { TrendingUp } from "lucide-react";
 
 const EMPTY = { member_id: "", member_name: "", date: "", amount: "", type: "tithe", payment_method: "cash", service_or_event: "", notes: "" };
-const TYPE_LABEL = { tithe: "Tithe", offering: "Offering", special_offering: "Special Offering", thanksgiving: "Thanksgiving", building_fund: "Building Fund" };
-const TYPE_COLOR = { tithe: "bg-green-100 text-green-700", offering: "bg-blue-100 text-blue-700", special_offering: "bg-purple-100 text-purple-700", thanksgiving: "bg-amber-100 text-amber-700", building_fund: "bg-red-100 text-red-700" };
+const TYPE_LABEL = { tithe: "Tithe", offering: "Offering", welfare: "Welfare", special_offering: "Special Offering", thanksgiving: "Thanksgiving", building_fund: "Building Fund" };
+const TYPE_COLOR = { tithe: "bg-green-100 text-green-700", offering: "bg-blue-100 text-blue-700", welfare: "bg-teal-100 text-teal-700", special_offering: "bg-purple-100 text-purple-700", thanksgiving: "bg-amber-100 text-amber-700", building_fund: "bg-red-100 text-red-700" };
 
 export default function GivingPage() {
   const { user } = useAuth();

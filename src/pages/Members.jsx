@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { entities } from "@/api/client";
+import { todayLocalISO } from "@/lib/finance";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -7,7 +8,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Plus, Search, Edit, Trash2, UserCheck } from "lucide-react";
+import { Plus, Search, Edit, Trash2, Eye } from "lucide-react";
+import MemberDetailSheet from "@/components/MemberDetailSheet";
 
 const EMPTY = { first_name: "", last_name: "", email: "", phone: "", address: "", department_id: "", department_name: "", join_date: "", membership_status: "active", gender: "", occupation: "", notes: "", baptism_date: "", membership_class_date: "", confirmation_date: "", volunteer_status: "", background_check_date: "" };
 const STATUS_COLOR = { active: "bg-green-100 text-green-700", inactive: "bg-red-100 text-red-700", visitor: "bg-amber-100 text-amber-700" };
@@ -22,8 +24,12 @@ export default function Members() {
   const [form, setForm] = useState(EMPTY);
   const [editId, setEditId] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [detailMember, setDetailMember] = useState(null);
+  const [detailOpen, setDetailOpen] = useState(false);
 
   useEffect(() => { loadData(); }, []);
+
+  function openDetail(m) { setDetailMember(m); setDetailOpen(true); }
 
   async function loadData() {
     const [m, d] = await Promise.all([entities.Member.list("-created_date", 500), entities.Department.filter({ is_active: true })]);
@@ -36,8 +42,21 @@ export default function Members() {
   async function handleSave() {
     const dept = departments.find(d => d.id === form.department_id);
     const data = { ...form, department_name: dept?.name || "" };
-    if (editId) await entities.Member.update(editId, data);
-    else await entities.Member.create(data);
+    if (editId) {
+      // Preserve the previous address for reference when it changes.
+      const original = members.find(m => m.id === editId);
+      const oldAddr = (original?.address || "").trim();
+      const newAddr = (form.address || "").trim();
+      if (oldAddr && newAddr && oldAddr !== newAddr) {
+        let hist = [];
+        try { hist = original.address_history ? JSON.parse(original.address_history) : []; } catch { hist = []; }
+        if (!Array.isArray(hist)) hist = [];
+        data.address_history = JSON.stringify([{ address: original.address, changed_on: todayLocalISO() }, ...hist]);
+      }
+      await entities.Member.update(editId, data);
+    } else {
+      await entities.Member.create(data);
+    }
     setOpen(false); loadData();
   }
 
@@ -103,7 +122,9 @@ export default function Members() {
             <tbody>
               {filtered.map((m, i) => (
                 <tr key={m.id} className={`border-b border-border last:border-0 hover:bg-muted/20 ${i % 2 === 0 ? "" : "bg-muted/10"}`}>
-                  <td className="px-4 py-3 font-medium">{m.first_name} {m.last_name}</td>
+                  <td className="px-4 py-3 font-medium">
+                    <button onClick={() => openDetail(m)} className="text-primary hover:underline text-left">{m.first_name} {m.last_name}</button>
+                  </td>
                   <td className="px-4 py-3 text-muted-foreground">{m.email}</td>
                   <td className="px-4 py-3 text-muted-foreground">{m.phone}</td>
                   <td className="px-4 py-3 text-muted-foreground">{m.department_name || "—"}</td>
@@ -113,8 +134,9 @@ export default function Members() {
                   <td className="px-4 py-3 text-muted-foreground">{m.join_date}</td>
                   <td className="px-4 py-3">
                     <div className="flex gap-1">
-                      <Button variant="ghost" size="icon" onClick={() => openEdit(m)}><Edit className="w-4 h-4" /></Button>
-                      <Button variant="ghost" size="icon" onClick={() => handleDelete(m.id)}><Trash2 className="w-4 h-4 text-destructive" /></Button>
+                      <Button variant="ghost" size="icon" onClick={() => openDetail(m)} title="View details"><Eye className="w-4 h-4" /></Button>
+                      <Button variant="ghost" size="icon" onClick={() => openEdit(m)} title="Edit"><Edit className="w-4 h-4" /></Button>
+                      <Button variant="ghost" size="icon" onClick={() => handleDelete(m.id)} title="Delete"><Trash2 className="w-4 h-4 text-destructive" /></Button>
                     </div>
                   </td>
                 </tr>
@@ -209,6 +231,16 @@ export default function Members() {
           </div>
         </DialogContent>
       </Dialog>
+
+      <MemberDetailSheet
+        open={detailOpen}
+        onOpenChange={setDetailOpen}
+        member={detailMember}
+        members={members}
+        onEdit={(m) => { setDetailOpen(false); openEdit(m); }}
+        onOpenMember={(m) => setDetailMember(m)}
+        onChanged={loadData}
+      />
     </div>
   );
 }

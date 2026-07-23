@@ -5,7 +5,7 @@ import StatCard from "@/components/StatCard";
 import MonthlyFinanceCard from "@/components/MonthlyFinanceCard";
 import { Button } from "@/components/ui/button";
 import { useChurchSettings } from "@/lib/ChurchSettingsContext";
-import { weeklyBreakdown, MONTHS, MONTHS_SHORT } from "@/lib/finance";
+import { weeklyBreakdown, MONTHS, MONTHS_SHORT, makePdfMoneyFormatter } from "@/lib/finance";
 import { generateFinancialReportPDF } from "@/lib/financeReport";
 import { Users, HandCoins, Receipt, CalendarDays, TrendingUp, Coins, ChevronLeft, ChevronRight, Download } from "lucide-react";
 import { format } from "date-fns";
@@ -141,7 +141,7 @@ export default function Dashboard() {
       year: selYear,
       giving: monthGiving,
       expenditures: monthExp,
-      fmt: formatMoney,
+      fmt: makePdfMoneyFormatter(settings),
       churchName: settings?.church_name,
       splitOthers: true,
     });

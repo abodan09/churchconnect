@@ -7,7 +7,7 @@ import { FileBarChart2, Download, Send } from "lucide-react";
 import StatCard from "@/components/StatCard";
 import { HandCoins } from "lucide-react";
 import { generateFinancialReportPDF } from "@/lib/financeReport";
-import { isInMonth } from "@/lib/finance";
+import { isInMonth, makePdfMoneyFormatter } from "@/lib/finance";
 import { useChurchSettings } from "@/lib/ChurchSettingsContext";
 import { format } from "date-fns";
 import { useBilling, UpgradePrompt } from "@/lib/billing";
@@ -74,7 +74,7 @@ export default function FinancialReportsPage() {
       year: yearNum,
       giving,
       expenditures,
-      fmt,
+      fmt: makePdfMoneyFormatter(settings),
       churchName: settings?.church_name,
       splitOthers: true,
     });

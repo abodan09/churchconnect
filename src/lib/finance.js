@@ -10,6 +10,26 @@ export const MONTHS_SHORT = [
   "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
 ];
 
+// Today's date as a LOCAL "YYYY-MM-DD" string (avoids the UTC-shift of
+// new Date().toISOString() near midnight in positive-offset timezones).
+export function todayLocalISO() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+// A currency formatter safe for jsPDF's core (Latin-1 only) fonts. If the
+// church's currency symbol has any character outside Latin-1 (e.g. the cedi ₵
+// or naira ₦), fall back to the ISO code ("GHS 100.00") so the PDF renders
+// correctly; otherwise keep the symbol ("€100.00").
+export function makePdfMoneyFormatter(settings) {
+  const symbol = settings?.currency_symbol || "€";
+  const code = settings?.currency_code || "";
+  const locale = settings?.language || "en";
+  const latin1Safe = /^[\x00-\xFF]*$/.test(symbol);
+  const prefix = latin1Safe ? symbol : (code ? code + " " : "");
+  return (n) => `${prefix}${Number(n || 0).toLocaleString(locale, { minimumFractionDigits: 2 })}`;
+}
+
 // Parse a stored date string ("YYYY-MM-DD" or a full ISO string) into a
 // LOCAL-midnight Date. `new Date("2026-07-15")` parses as UTC midnight, which
 // rolls back a day in negative timezones and would drop records into the wrong
