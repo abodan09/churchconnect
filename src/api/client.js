@@ -77,7 +77,8 @@ function makeEntity(resource) {
 }
 
 export const entities = {
-  Member:           makeEntity('members'),
+  Member:            makeEntity('members'),
+  MemberRelationship:makeEntity('memberrelationships'),
   Department:       makeEntity('departments'),
   Event:            makeEntity('events'),
   Giving:           makeEntity('givings'),

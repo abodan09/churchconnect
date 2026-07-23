@@ -9,7 +9,8 @@ function getPrisma() {
 }
 
 const MODEL_MAP = {
-  members:          'member',
+  members:            'member',
+  memberrelationships:'memberRelationship',
   departments:      'department',
   events:           'event',
   givings:          'giving',
@@ -29,14 +30,14 @@ const MODEL_MAP = {
 
 // These models carry church_id and must always be scoped.
 const CHURCH_SCOPED = new Set([
-  'member','department','event','giving','expenditure','attendance',
+  'member','memberRelationship','department','event','giving','expenditure','attendance',
   'sermon','property','churchSettings','accessRequest','smallGroup',
   'smallGroupMember','pastoralCare','volunteer','announcement',
 ]);
 
 // Models that can be written to and should carry church_id on creation.
 const MODELS_WITH_CREATOR = new Set([
-  'member','department','event','giving','expenditure','attendance',
+  'member','memberRelationship','department','event','giving','expenditure','attendance',
   'sermon','property','smallGroup','smallGroupMember','pastoralCare',
   'volunteer','announcement',
 ]);

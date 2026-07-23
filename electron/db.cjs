@@ -7,6 +7,7 @@ let _db = null;
 
 const TABLE_MAP = {
   member: 'members',
+  memberRelationship: 'member_relationships',
   department: 'departments',
   event: 'events',
   giving: 'givings',
@@ -81,6 +82,21 @@ CREATE TABLE IF NOT EXISTS members (
   confirmation_date TEXT,
   volunteer_status TEXT,
   background_check_date TEXT,
+  created_by_id TEXT,
+  createdAt TEXT DEFAULT (datetime('now')),
+  updatedAt TEXT DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS member_relationships (
+  id TEXT PRIMARY KEY,
+  church_id TEXT,
+  member_id TEXT NOT NULL,
+  relationship_type TEXT NOT NULL,
+  related_member_id TEXT,
+  related_name TEXT,
+  related_phone TEXT,
+  related_email TEXT,
+  related_notes TEXT,
   created_by_id TEXT,
   createdAt TEXT DEFAULT (datetime('now')),
   updatedAt TEXT DEFAULT (datetime('now'))
@@ -343,6 +359,7 @@ function initDb(userDataPath) {
   for (const col of ['theme_primary', 'theme_secondary', 'theme_tertiary']) {
     try { _db.exec(`ALTER TABLE church_settings ADD COLUMN ${col} TEXT`); } catch { /* already exists */ }
   }
+  try { _db.exec(`ALTER TABLE members ADD COLUMN address_history TEXT`); } catch { /* already exists */ }
   return _db;
 }
 

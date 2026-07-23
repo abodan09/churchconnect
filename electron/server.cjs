@@ -7,6 +7,7 @@ const { hashPassword, verifyPassword, signToken, authMiddleware } = require('./a
 
 const MODEL_MAP = {
   members: 'member',
+  memberrelationships: 'memberRelationship',
   departments: 'department',
   events: 'event',
   givings: 'giving',
@@ -24,7 +25,7 @@ const MODEL_MAP = {
   announcements: 'announcement',
 };
 
-const MODELS_WITH_CREATOR = ['member','department','event','giving','expenditure','attendance','sermon','property','userProfile','smallGroup','smallGroupMember','pastoralCare','volunteer','announcement'];
+const MODELS_WITH_CREATOR = ['member','memberRelationship','department','event','giving','expenditure','attendance','sermon','property','userProfile','smallGroup','smallGroupMember','pastoralCare','volunteer','announcement'];
 const FIELD_MAP = { created_date: 'createdAt', updated_date: 'updatedAt' };
 
 let _prisma = null;

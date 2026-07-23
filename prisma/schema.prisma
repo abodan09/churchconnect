@@ -47,6 +47,7 @@ model Member {
   email                   String?
   phone                   String?
   address                 String?
+  address_history         String?  // JSON array of past addresses: [{ address, changed_on }]
   department_id           String?
   department_name         String?
   join_date               String?
@@ -68,6 +69,31 @@ model Member {
   created_by_id           String?
   createdAt               DateTime @default(now())
   updatedAt               DateTime @updatedAt
+}
+
+// ── Member Relationships (family tree) ────────────────────────────────────────
+// One directed row per relationship, stored from `member_id`'s perspective.
+// A member's family is the union of rows where member_id = X (shown as-is) and
+// rows where related_member_id = X (shown with the inverse type). `related_member_id`
+// links a registered member; otherwise the related person's details are captured inline.
+
+model MemberRelationship {
+  id                String   @id @default(cuid())
+  church_id         String
+  member_id         String
+  relationship_type String // spouse | child | parent
+  related_member_id String? // set when the relative is a registered member
+  related_name      String?
+  related_phone     String?
+  related_email     String?
+  related_notes     String?
+  created_by_id     String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([member_id])
+  @@index([related_member_id])
+  @@index([church_id])
 }
 
 // ── Departments ───────────────────────────────────────────────────────────────
