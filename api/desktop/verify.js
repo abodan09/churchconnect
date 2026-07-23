@@ -1,11 +1,26 @@
 import { createClerkClient } from '@clerk/backend';
+import { PrismaClient } from '@prisma/client';
+import jwt from 'jsonwebtoken';
 
 // Verifies a ChurchConnect cloud account's email + password so the standalone
 // (offline) desktop app can be activated with the same credentials. Called
-// server-to-server by the desktop's embedded server on FIRST launch only; after
-// that the desktop stores the session locally and never contacts the cloud again.
+// server-to-server by the desktop's embedded server. On success it also returns
+// the user's church_id and (when a device_id is supplied) mints a long-lived
+// DEVICE SYNC TOKEN the desktop uses to authenticate background sync to /api/sync.
 
 const clerk = createClerkClient({ secretKey: process.env.CLERK_SECRET_KEY });
+
+let _prisma = null;
+function getPrisma() { if (!_prisma) _prisma = new PrismaClient(); return _prisma; }
+
+// Long-lived, church-scoped token for offline device sync. Signed with a secret
+// distinct from CLERK_SECRET_KEY and the desktop's LOCAL_JWT_SECRET. `v` is a
+// version claim reserved for future revocation.
+function mintSyncToken({ clerk_id, church_id, device_id }) {
+  const secret = (process.env.DEVICE_SYNC_JWT_SECRET || '').trim();
+  if (!secret || !church_id || !device_id) return null;
+  return jwt.sign({ purpose: 'sync', clerk_id, church_id, device_id, v: 1 }, secret, { expiresIn: '365d' });
+}
 
 // Best-effort in-memory throttle (per warm serverless instance). For stronger
 // protection also enable Clerk's attack-protection / account-lockout and/or a
@@ -38,7 +53,7 @@ export default async function handler(req, res) {
   if (!process.env.CLERK_SECRET_KEY) return res.status(500).json({ ok: false, error: 'Server not configured' });
 
   const start = Date.now();
-  const { email, password } = req.body || {};
+  const { email, password, device_id } = req.body || {};
   if (!email || !password) return res.status(400).json({ ok: false, error: 'Email and password are required' });
 
   const ip = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim() || 'unknown';
@@ -69,6 +84,16 @@ export default async function handler(req, res) {
       console.error('[desktop/verify] verifyPassword error:', status, e?.message);
       return res.status(status === 429 ? 429 : 502).json({ ok: false, error: 'Could not verify your account right now. Please try again.' });
     }
+    // Resolve the user's church so the desktop can scope sync (best-effort;
+    // never blocks activation). Only runs after a valid password, so it does not
+    // affect the constant-time authFail() masking above.
+    let church_id = null;
+    try {
+      const profile = await getPrisma().userProfile.findUnique({ where: { clerkId: user.id }, select: { church_id: true } });
+      church_id = profile?.church_id ?? null;
+    } catch (e) {
+      console.error('[desktop/verify] church lookup failed:', e?.message);
+    }
     return res.status(200).json({
       ok: true,
       user: {
@@ -77,6 +102,8 @@ export default async function handler(req, res) {
         first_name: user.firstName || '',
         last_name: user.lastName || '',
       },
+      church_id,
+      sync_token: mintSyncToken({ clerk_id: user.id, church_id, device_id }),
     });
   } catch (e) {
     console.error('[desktop/verify]', e?.message);
