@@ -247,6 +247,11 @@ export default function Layout() {
             <LogOut className="w-4 h-4" />
             Sign Out
           </button>
+          <div className="px-3 pt-2 flex items-center gap-2 text-[11px] text-primary-foreground/50">
+            <Link to="/terms" className="hover:text-white">Terms</Link>
+            <span>·</span>
+            <Link to="/privacy" className="hover:text-white">Privacy</Link>
+          </div>
         </div>
       </aside>
 

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '@/lib/ElectronAuthContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -58,6 +58,13 @@ export default function LocalSetupPage() {
             Don’t have an account yet? Create one at church.frozenbit.eu, then sign in here.
           </p>
         </form>
+
+        <p className="text-xs text-muted-foreground text-center px-2">
+          By activating you agree to our{' '}
+          <Link to="/terms" className="underline hover:text-foreground">Terms of Service</Link>
+          {' '}and{' '}
+          <Link to="/privacy" className="underline hover:text-foreground">Privacy Policy</Link>.
+        </p>
 
         <div className="flex items-start gap-2 text-xs text-muted-foreground bg-muted/40 rounded-lg p-3">
           <WifiOff className="w-4 h-4 flex-shrink-0 mt-0.5" />

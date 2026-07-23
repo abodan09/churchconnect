@@ -86,6 +86,13 @@ export default function Register() {
             },
           }}
         />
+
+        <p className="text-xs text-muted-foreground text-center px-4">
+          By continuing you agree to our{' '}
+          <a href="/terms" target="_blank" rel="noopener noreferrer" className="underline hover:text-foreground">Terms of Service</a>
+          {' '}and{' '}
+          <a href="/privacy" target="_blank" rel="noopener noreferrer" className="underline hover:text-foreground">Privacy Policy</a>.
+        </p>
       </div>
     </div>
   );
