@@ -5,7 +5,9 @@ const log = require('electron-log');
 
 autoUpdater.logger = log;
 autoUpdater.logger.transports.file.level = 'info';
-autoUpdater.autoDownload = true;
+// Don't download automatically — the renderer asks the user first, then triggers
+// the download explicitly (see the 'download-update' IPC below).
+autoUpdater.autoDownload = false;
 autoUpdater.autoInstallOnAppQuit = true;
 
 // Explicitly set the feed URL so the embedded app-update.yml is never the source of truth.
@@ -51,6 +53,13 @@ function setupUpdater(mainWindow) {
   // IPC: renderer triggers manual check
   ipcMain.on('check-for-updates', () => {
     autoUpdater.checkForUpdates().catch(() => {});
+  });
+
+  // IPC: renderer confirms it wants to download the available update
+  ipcMain.on('download-update', () => {
+    autoUpdater.downloadUpdate().catch((err) => {
+      mainWindow.webContents.send('update-error', err?.message || 'Download failed');
+    });
   });
 
   // IPC: renderer confirms install

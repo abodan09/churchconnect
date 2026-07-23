@@ -1,169 +1,200 @@
 import { useState, useEffect, useRef } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
-import { Download, RefreshCw, CheckCircle, AlertCircle, Loader2 } from 'lucide-react';
+import { Download, RefreshCw, CheckCircle, AlertCircle, Loader2, X } from 'lucide-react';
 
+// Non-blocking updater. A small card in the bottom-right corner replaces the old
+// full-screen modal, so the app stays fully usable while an update is handled.
+//
+// Auto (background) flow:   available → [Download] → progress → [Update] → install
+// Manual (user-triggered):  check → downloads immediately → progress → installs
+//                           (no second confirmation, since the user asked for it)
 export default function UpdateNotifier() {
-  const [state, setState] = useState('idle'); // idle | checking | available | downloading | downloaded | error | uptodate
+  const [state, setState] = useState('idle'); // idle|checking|available|downloading|downloaded|installing|uptodate|error
   const [updateInfo, setUpdateInfo] = useState(null);
   const [progress, setProgress] = useState(0);
   const [errorMsg, setErrorMsg] = useState('');
-  const [open, setOpen] = useState(false);
   const [version, setVersion] = useState('');
-  const manualCheck = useRef(false);
+  const [dismissed, setDismissed] = useState(false);
+  const flow = useRef('auto'); // 'auto' | 'manual'
+  const stateRef = useRef('idle'); // mirrors `state` for event handlers (which close over stale state)
+
+  useEffect(() => { stateRef.current = state; }, [state]);
 
   useEffect(() => {
     if (!window.electronAPI) return;
-
-    window.electronAPI.getVersion().then(v => setVersion(v)).catch(() => {});
+    window.electronAPI.getVersion().then(setVersion).catch(() => {});
 
     const cleanups = [
       window.electronAPI.onUpdateChecking(() => setState('checking')),
+
       window.electronAPI.onUpdateAvailable((info) => {
         setUpdateInfo(info);
-        setState('available');
-        setOpen(true);
+        setDismissed(false);
+        if (flow.current === 'manual') {
+          // The user already asked for the update — download straight away.
+          setProgress(0);
+          setState('downloading');
+          window.electronAPI.downloadUpdate();
+        } else {
+          setState('available'); // wait for the user to confirm the download
+        }
       }),
+
       window.electronAPI.onUpdateNotAvailable(() => {
-        setState('uptodate');
-        if (manualCheck.current) { setOpen(true); manualCheck.current = false; }
+        if (flow.current === 'manual') { setDismissed(false); setState('uptodate'); }
+        else setState('idle');
       }),
+
       window.electronAPI.onDownloadProgress((p) => {
         setState('downloading');
         setProgress(p.percent);
-        setOpen(true);
       }),
+
       window.electronAPI.onUpdateDownloaded(() => {
-        setState('downloaded');
-        setOpen(true);
+        if (flow.current === 'manual') {
+          // No second confirmation for a manually-triggered update.
+          setState('installing');
+          window.electronAPI.installUpdate();
+        } else {
+          setDismissed(false);
+          setState('downloaded'); // wait for the user to click "Update"
+        }
       }),
+
       window.electronAPI.onUpdateError((msg) => {
-        setState('error');
         setErrorMsg(msg);
-        if (manualCheck.current) { setOpen(true); manualCheck.current = false; }
+        // Surface the error whenever the user was actively engaged — a manual
+        // check, or a download/install they initiated. Stay silent only for
+        // failures during a purely background check the user never acted on.
+        const engaged = flow.current === 'manual' || stateRef.current === 'downloading' || stateRef.current === 'installing';
+        if (engaged) { setDismissed(false); setState('error'); }
+        else { setState('idle'); flow.current = 'auto'; }
       }),
-      window.electronAPI.onMenuCheckForUpdates?.(() => {
-        manualCheck.current = true;
-        setState('checking');
-        setOpen(true);
-        window.electronAPI.checkForUpdates();
-      }),
+
+      window.electronAPI.onMenuCheckForUpdates?.(() => startManualCheck()),
     ];
 
-    return () => cleanups.forEach(fn => fn?.());
+    return () => cleanups.forEach((fn) => fn?.());
   }, []);
 
-  function handleCheckNow() {
-    manualCheck.current = true;
+  // Transient states auto-clear (and reset the flow). The 'checking' watchdog also
+  // recovers the UI if the update service never responds (e.g. a non-packaged dev
+  // run has no IPC handler, or a stalled network on a real check).
+  useEffect(() => {
+    if (state === 'uptodate') {
+      const t = setTimeout(() => { setState('idle'); flow.current = 'auto'; }, 4000);
+      return () => clearTimeout(t);
+    }
+    if (state === 'error') {
+      const t = setTimeout(() => { setState('idle'); flow.current = 'auto'; }, 8000);
+      return () => clearTimeout(t);
+    }
+    if (state === 'checking') {
+      const t = setTimeout(() => {
+        if (flow.current === 'manual') {
+          setErrorMsg('No response from the update service. Please try again later.');
+          setState('error');
+        } else {
+          setState('idle');
+        }
+      }, 20000);
+      return () => clearTimeout(t);
+    }
+  }, [state]);
+
+  function startManualCheck() {
+    flow.current = 'manual';
+    setDismissed(false);
     setState('checking');
-    setOpen(true);
     window.electronAPI?.checkForUpdates();
   }
 
+  function handleDownload() {
+    setProgress(0);
+    setState('downloading');
+    window.electronAPI?.downloadUpdate();
+  }
+
   function handleInstall() {
+    setState('installing');
     window.electronAPI?.installUpdate();
   }
 
-  const statusIcon = {
-    checking: <Loader2 className="w-5 h-5 animate-spin text-primary" />,
-    available: <Download className="w-5 h-5 text-primary" />,
-    downloading: <Loader2 className="w-5 h-5 animate-spin text-primary" />,
-    downloaded: <CheckCircle className="w-5 h-5 text-green-600" />,
-    uptodate: <CheckCircle className="w-5 h-5 text-green-600" />,
-    error: <AlertCircle className="w-5 h-5 text-destructive" />,
-    idle: null,
-  }[state];
+  const busy = state === 'checking' || state === 'downloading' || state === 'installing';
+
+  const showBanner = !dismissed && (
+    state === 'available' || state === 'downloading' || state === 'downloaded' ||
+    state === 'installing' || state === 'error' ||
+    (flow.current === 'manual' && (state === 'checking' || state === 'uptodate'))
+  );
+
+  const meta = {
+    checking:    { icon: <Loader2 className="w-5 h-5 animate-spin text-primary" />, title: 'Checking for updates…', sub: 'Looking for a newer version.' },
+    available:   { icon: <Download className="w-5 h-5 text-primary" />, title: 'Update available', sub: `v${version} → v${updateInfo?.version}` },
+    downloading: { icon: <Loader2 className="w-5 h-5 animate-spin text-primary" />, title: 'Downloading update…', sub: `Version ${updateInfo?.version || ''}`.trim() },
+    downloaded:  { icon: <CheckCircle className="w-5 h-5 text-green-600" />, title: 'Update ready', sub: `Restart to apply v${updateInfo?.version}.` },
+    installing:  { icon: <Loader2 className="w-5 h-5 animate-spin text-primary" />, title: 'Installing update…', sub: 'ChurchConnect will restart.' },
+    uptodate:    { icon: <CheckCircle className="w-5 h-5 text-green-600" />, title: "You're up to date", sub: `v${version} is the latest version.` },
+    error:       { icon: <AlertCircle className="w-5 h-5 text-destructive" />, title: 'Update failed', sub: errorMsg || 'Something went wrong.' },
+  }[state] || {};
+
+  const canDismiss = ['available', 'downloading', 'downloaded', 'uptodate', 'error'].includes(state);
 
   return (
     <>
-      {/* Trigger button (shown in app settings or header) */}
+      {/* Manual trigger (rendered wherever this component is mounted) */}
       <Button
         variant="ghost"
         size="sm"
-        onClick={handleCheckNow}
+        onClick={startManualCheck}
         className="gap-2 text-xs"
-        disabled={state === 'checking' || state === 'downloading'}
+        disabled={busy}
       >
         {state === 'checking' ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
         Check for Updates
         {version && <span className="text-muted-foreground">v{version}</span>}
       </Button>
 
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              {statusIcon}
-              {state === 'checking' && 'Checking for Updates…'}
-              {state === 'available' && 'Update Available'}
-              {state === 'downloading' && 'Downloading Update…'}
-              {state === 'downloaded' && 'Ready to Install'}
-              {state === 'uptodate' && 'You\'re Up to Date'}
-              {state === 'error' && 'Update Check Failed'}
-            </DialogTitle>
-          </DialogHeader>
-
-          <div className="space-y-4 mt-2">
-            {state === 'available' && updateInfo && (
-              <>
-                <div className="bg-muted/50 rounded-lg p-3 text-sm space-y-1">
-                  <p><span className="font-medium">Current:</span> v{version}</p>
-                  <p><span className="font-medium">New:</span> v{updateInfo.version}</p>
-                  {updateInfo.releaseDate && (
-                    <p className="text-muted-foreground text-xs">Released {new Date(updateInfo.releaseDate).toLocaleDateString()}</p>
-                  )}
-                </div>
-                <p className="text-sm text-muted-foreground">
-                  The update is downloading in the background. You'll be notified when it's ready to install.
-                </p>
-              </>
-            )}
-
-            {state === 'downloading' && (
-              <div className="space-y-2">
-                <Progress value={progress} className="h-2" />
-                <p className="text-sm text-muted-foreground text-center">{progress}% downloaded</p>
-              </div>
-            )}
-
-            {state === 'downloaded' && (
-              <>
-                <p className="text-sm text-muted-foreground">
-                  Update v{updateInfo?.version} is ready. Restart ChurchConnect to apply it.
-                </p>
-                <div className="flex gap-2">
-                  <Button onClick={handleInstall} className="flex-1">Restart & Install</Button>
-                  <Button variant="outline" onClick={() => setOpen(false)} className="flex-1">Later</Button>
-                </div>
-              </>
-            )}
-
-            {state === 'uptodate' && (
-              <p className="text-sm text-muted-foreground">
-                ChurchConnect v{version} is the latest version. No updates available.
-              </p>
-            )}
-
-            {state === 'error' && (
-              <p className="text-sm text-muted-foreground">
-                Could not check for updates: {errorMsg || 'Unknown error'}. Make sure you have an internet connection.
-              </p>
-            )}
-
-            {state === 'checking' && (
-              <p className="text-sm text-muted-foreground">Looking for new versions…</p>
-            )}
-
-            {(state === 'uptodate' || state === 'error' || state === 'checking' || state === 'available') && (
-              <Button variant="outline" onClick={() => setOpen(false)} className="w-full">
-                Close
-              </Button>
+      {showBanner && (
+        <div className="fixed bottom-4 right-4 z-50 w-80 max-w-[calc(100vw-2rem)] bg-white border border-border rounded-xl shadow-lg p-4 animate-in fade-in slide-in-from-bottom-4 duration-300">
+          <div className="flex items-start gap-3">
+            <div className="mt-0.5 flex-shrink-0">{meta.icon}</div>
+            <div className="flex-1 min-w-0">
+              <p className="font-semibold text-sm text-foreground">{meta.title}</p>
+              <p className="text-xs text-muted-foreground mt-0.5 break-words">{meta.sub}</p>
+            </div>
+            {canDismiss && (
+              <button onClick={() => setDismissed(true)} aria-label="Dismiss" className="text-muted-foreground hover:text-foreground flex-shrink-0">
+                <X className="w-4 h-4" />
+              </button>
             )}
           </div>
-        </DialogContent>
-      </Dialog>
+
+          {state === 'downloading' && (
+            <div className="mt-3 space-y-1">
+              <Progress value={progress} className="h-1.5" />
+              <p className="text-[11px] text-muted-foreground text-right">{progress}%</p>
+            </div>
+          )}
+
+          {state === 'available' && (
+            <div className="mt-3 flex gap-2">
+              <Button size="sm" onClick={handleDownload} className="flex-1 gap-1.5">
+                <Download className="w-3.5 h-3.5" /> Download
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => setDismissed(true)} className="flex-1">Not now</Button>
+            </div>
+          )}
+
+          {state === 'downloaded' && (
+            <div className="mt-3 flex gap-2">
+              <Button size="sm" onClick={handleInstall} className="flex-1">Update</Button>
+              <Button size="sm" variant="outline" onClick={() => setDismissed(true)} className="flex-1">Later</Button>
+            </div>
+          )}
+        </div>
+      )}
     </>
   );
 }
