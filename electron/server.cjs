@@ -93,12 +93,14 @@ function createServer(userDataPath) {
       const { email, password } = req.body || {};
       if (!email || !password) return res.status(400).json({ error: 'Email and password required' });
 
+      const sync = require('./sync.cjs');
+      const device_id = sync.ensureDeviceId();
       let cloud;
       try {
         const r = await fetch(`${CLOUD_URL}/api/desktop/verify`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email, password }),
+          body: JSON.stringify({ email, password, device_id }),
         });
         cloud = await r.json().catch(() => ({}));
         if (!r.ok || !cloud.ok) {
@@ -113,6 +115,12 @@ function createServer(userDataPath) {
       const password_hash = await hashPassword(password);
       const user = localUsers.create({ email, password_hash, full_name, role: 'super_admin' });
       const token = signToken({ sub: user.id, email: user.email, role: user.role, full_name: user.full_name });
+      // Fresh activations capture cloud sync credentials (church_id + clerk_id +
+      // device sync token) automatically, so sync starts silently on next launch.
+      if (cloud.church_id && cloud.sync_token) {
+        try { sync.storeActivationCredentials({ church_id: cloud.church_id, sync_token: cloud.sync_token, clerk_id: cloud.user?.clerk_id }); }
+        catch (e) { console.error('[cloud-setup] store sync creds failed:', e.message); }
+      }
       res.json({ token, user: { id: user.id, email: user.email, full_name: user.full_name, role: user.role } });
     } catch (err) {
       res.status(500).json({ error: err.message });

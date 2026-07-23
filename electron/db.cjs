@@ -46,6 +46,11 @@ CREATE TABLE IF NOT EXISTS local_users (
   created_at TEXT DEFAULT (datetime('now'))
 );
 
+CREATE TABLE IF NOT EXISTS sync_meta (
+  key TEXT PRIMARY KEY,
+  value TEXT
+);
+
 CREATE TABLE IF NOT EXISTS user_profiles (
   id TEXT PRIMARY KEY,
   clerkId TEXT UNIQUE,
@@ -505,4 +510,93 @@ const localUsers = {
   },
 };
 
-module.exports = { initDb, createPrismaClient, localUsers };
+// ── Sync helpers ──────────────────────────────────────────────────────────────
+
+function runInTransaction(fn) {
+  return getDb().transaction(fn)();
+}
+
+const syncMeta = {
+  get(key) {
+    const r = getDb().prepare('SELECT value FROM sync_meta WHERE key = ?').get(key);
+    return r ? r.value : null;
+  },
+  set(key, value) {
+    getDb().prepare(
+      'INSERT INTO sync_meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value'
+    ).run(key, value == null ? null : String(value));
+  },
+  getAll() {
+    const rows = getDb().prepare('SELECT key, value FROM sync_meta').all();
+    const out = {};
+    for (const r of rows) out[r.key] = r.value;
+    return out;
+  },
+};
+
+const _colCache = new Map();
+function localColumns(tableName) {
+  if (_colCache.has(tableName)) return _colCache.get(tableName);
+  const cols = getDb().prepare(`PRAGMA table_info("${tableName}")`).all().map((r) => r.name);
+  _colCache.set(tableName, cols);
+  return cols;
+}
+
+// Local rows changed since `sinceIso` (local clock), keyset-paginated by
+// (updatedAt, id) ascending. Booleans are converted back to true/false via
+// convertRow so they push cleanly to Postgres.
+function selectChangedSince(modelName, sinceIso, { limit = 200, cursor = null } = {}) {
+  const tableName = TABLE_MAP[modelName];
+  if (!tableName) return [];
+  const conds = [];
+  const params = [];
+  if (sinceIso) { conds.push('updatedAt > ?'); params.push(sinceIso); }
+  if (cursor && cursor.updatedAt) {
+    conds.push('(updatedAt > ? OR (updatedAt = ? AND id > ?))');
+    params.push(cursor.updatedAt, cursor.updatedAt, cursor.id || '');
+  }
+  const where = conds.length ? 'WHERE ' + conds.join(' AND ') : '';
+  const sql = `SELECT * FROM "${tableName}" ${where} ORDER BY updatedAt ASC, id ASC LIMIT ?`;
+  params.push(limit);
+  return getDb().prepare(sql).all(...params).map((r) => convertRow(tableName, r));
+}
+
+// Local rows by id (used to re-push rows the cloud previously rejected — the
+// sync dead-letter/retry set). Booleans are converted back to true/false.
+function selectByIds(modelName, ids) {
+  const tableName = TABLE_MAP[modelName];
+  if (!tableName || !Array.isArray(ids) || !ids.length) return [];
+  const ph = ids.map(() => '?').join(', ');
+  const sql = `SELECT * FROM "${tableName}" WHERE id IN (${ph})`;
+  return getDb().prepare(sql).all(...ids).map((r) => convertRow(tableName, r));
+}
+
+// Apply a remote (cloud) row into local SQLite, PRESERVING its createdAt/updatedAt
+// (so it isn't re-selected for push -> no ping-pong). Columns not present locally
+// (e.g. church_id on most tables) are dropped. Last-write-wins: only overwrites an
+// existing row when the incoming updatedAt is strictly newer; createdAt is kept on
+// conflict. Returns true if a row was inserted/updated, false if skipped.
+function upsertRemoteRow(modelName, remoteRow) {
+  const tableName = TABLE_MAP[modelName];
+  if (!tableName || !remoteRow || !remoteRow.id) return false;
+  const allow = new Set(localColumns(tableName));
+  const prepared = prepareData(tableName, remoteRow); // booleans -> 0/1
+  const data = {};
+  for (const [k, v] of Object.entries(prepared)) {
+    if (allow.has(k)) data[k] = v === undefined ? null : v;
+  }
+  if (!data.id) return false;
+  const cols = Object.keys(data);
+  const colList = cols.map((c) => `"${c}"`).join(', ');
+  const placeholders = cols.map(() => '?').join(', ');
+  const setCols = cols.filter((c) => c !== 'id' && c !== 'createdAt');
+  const setClause = setCols.map((c) => `"${c}" = excluded."${c}"`).join(', ');
+  const sql =
+    `INSERT INTO "${tableName}" (${colList}) VALUES (${placeholders}) ` +
+    `ON CONFLICT(id) DO UPDATE SET ${setClause} ` +
+    `WHERE excluded."updatedAt" > "${tableName}"."updatedAt"`;
+  const info = getDb().prepare(sql).run(...cols.map((c) => data[c]));
+  return info.changes > 0;
+}
+
+module.exports = { initDb, getDb, createPrismaClient, localUsers, runInTransaction, syncMeta, localColumns, selectChangedSince, selectByIds, upsertRemoteRow };

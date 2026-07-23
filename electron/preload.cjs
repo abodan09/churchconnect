@@ -13,6 +13,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getMode: () => ipcRenderer.invoke('get-mode'),
   setMode: (mode) => ipcRenderer.invoke('set-mode', mode),
 
+  // Cloud sync
+  getSyncStatus: () => ipcRenderer.invoke('sync:get-status'),
+  syncNow: () => ipcRenderer.send('sync:run-now'),
+  enableSync: (email, password) => ipcRenderer.invoke('sync:enable', { email, password }),
+  disableSync: () => ipcRenderer.invoke('sync:disable'),
+  onSyncStatus: (cb) => { const h = (_, s) => cb(s); ipcRenderer.on('sync:status', h); return () => ipcRenderer.removeListener('sync:status', h); },
+
   // Update event listeners
   onUpdateChecking:      (cb) => { ipcRenderer.on('update-checking',     () => cb());       return () => ipcRenderer.removeAllListeners('update-checking'); },
   onUpdateAvailable:     (cb) => { ipcRenderer.on('update-available',    (_, i) => cb(i));  return () => ipcRenderer.removeAllListeners('update-available'); },

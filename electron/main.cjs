@@ -48,6 +48,9 @@ function createWindow(mode) {
 
   mainWindow.on('closed', () => { mainWindow = null; });
 
+  // Keep the sync engine pointed at the live window (macOS reopen recreates it).
+  try { require('./sync.cjs').setWindow(mainWindow); } catch { /* sync module optional */ }
+
   buildMenu();
 }
 
@@ -196,6 +199,21 @@ app.whenReady().then(async () => {
     );
     return { ok: true };
   });
+
+  // Background cloud sync — local/offline mode only (cloud mode loads the live site).
+  if (settings.mode !== 'cloud') {
+    try {
+      const sync = require('./sync.cjs');
+      sync.init(mainWindow, { cloudUrl: process.env.CHURCHCONNECT_CLOUD_URL || 'https://church.frozenbit.eu' });
+      ipcMain.handle('sync:get-status', () => sync.getStatus());
+      ipcMain.on('sync:run-now', () => sync.runSync({ reason: 'manual' }));
+      ipcMain.handle('sync:enable', (_, args) => sync.enableSync(args || {}));
+      ipcMain.handle('sync:disable', () => sync.disableSync());
+      sync.start();
+    } catch (err) {
+      console.warn('Sync not available:', err.message);
+    }
+  }
 
   // Set up auto-updater only in packaged app
   if (app.isPackaged) {
