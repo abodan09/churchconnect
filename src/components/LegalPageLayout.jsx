@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom";
+import PoweredBy from "@/components/PoweredBy";
 
 // Shared shell for the public legal pages (Terms, Privacy). Self-contained and
 // styled without a typography plugin, so plain <h2>/<p>/<ul> inside `children`
@@ -35,11 +36,15 @@ export default function LegalPageLayout({ title, lastUpdated, children }) {
           {children}
         </div>
 
-        <footer className="mt-12 pt-6 border-t border-border text-sm text-muted-foreground flex flex-wrap gap-x-4 gap-y-2">
-          <Link to="/" className="hover:text-foreground">← Home</Link>
-          <Link to="/terms" className="hover:text-foreground">Terms of Service</Link>
-          <Link to="/privacy" className="hover:text-foreground">Privacy Policy</Link>
-          <span className="ml-auto">© {new Date().getFullYear()} FrozenBit</span>
+        <footer className="mt-12 pt-6 border-t border-border space-y-3">
+          <div className="text-sm text-muted-foreground flex flex-wrap gap-x-4 gap-y-2">
+            <Link to="/" className="hover:text-foreground">← Home</Link>
+            <Link to="/about" className="hover:text-foreground">About</Link>
+            <Link to="/terms" className="hover:text-foreground">Terms of Service</Link>
+            <Link to="/privacy" className="hover:text-foreground">Privacy Policy</Link>
+            <span className="ml-auto">© {new Date().getFullYear()} FrozenBit</span>
+          </div>
+          <PoweredBy />
         </footer>
       </main>
     </div>

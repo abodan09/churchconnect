@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
+import PoweredBy from "@/components/PoweredBy";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -143,6 +144,8 @@ export default function RequestAccessPage() {
             <Link to="/login" className="text-primary font-medium hover:underline">Log in</Link>
           </p>
         </div>
+
+        <PoweredBy className="text-center mt-6" />
       </div>
     </div>
   );

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth as useClerkAuth } from '@clerk/clerk-react';
 import { useAuth } from '@/lib/ClerkAuthContext';
 import { Church, Loader2, ArrowRight, CheckCircle } from 'lucide-react';
+import PoweredBy from '@/components/PoweredBy';
 
 function slugify(str) {
   return str.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 60);
@@ -138,6 +139,7 @@ export default function OnboardingPage() {
         <p className="text-center text-xs text-gray-400 mt-6">
           Each church is an isolated workspace. Your data is never shared with other churches.
         </p>
+        <PoweredBy className="text-center mt-4" />
       </div>
     </div>
   );

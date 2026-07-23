@@ -3,6 +3,7 @@ import { useAuth as useClerkAuth } from '@clerk/clerk-react';
 import { useAuth } from '@/lib/ClerkAuthContext';
 import { Church, CheckCircle2, Loader2, AlertCircle, LogOut } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import PoweredBy from '@/components/PoweredBy';
 
 export default function JoinChurchPage() {
   const { user, signOut } = useAuth();
@@ -192,6 +193,8 @@ export default function JoinChurchPage() {
             </button>
           </div>
         </div>
+
+        <PoweredBy className="text-center mt-6" />
       </div>
     </div>
   );

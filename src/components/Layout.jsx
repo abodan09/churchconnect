@@ -10,6 +10,7 @@ import {
   UsersRound, Heart, UserCheck, Megaphone, Zap
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import PoweredBy from "@/components/PoweredBy";
 
 const IS_ELECTRON = typeof window !== 'undefined' && !!window.electronAPI?.isElectron;
 
@@ -248,6 +249,8 @@ export default function Layout() {
             Sign Out
           </button>
           <div className="px-3 pt-2 flex items-center gap-2 text-[11px] text-primary-foreground/50">
+            <Link to="/about" className="hover:text-white">About</Link>
+            <span>·</span>
             <Link to="/terms" className="hover:text-white">Terms</Link>
             <span>·</span>
             <Link to="/privacy" className="hover:text-white">Privacy</Link>
@@ -280,6 +283,9 @@ export default function Layout() {
         </header>
         <main className="relative z-10 flex-1 overflow-y-auto p-4 md:p-6">
           <Outlet context={{ user }} />
+          <footer className="pt-6 mt-8 border-t border-border/60 text-center">
+            <PoweredBy />
+          </footer>
         </main>
       </div>
     </div>

@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/components/ui/use-toast';
+import PoweredBy from '@/components/PoweredBy';
 
 export default function LocalLoginPage() {
   const { login } = useAuth();
@@ -55,6 +56,7 @@ export default function LocalLoginPage() {
         <p className="text-xs text-muted-foreground text-center">
           Running in local (offline) mode — all data is stored on this device.
         </p>
+        <PoweredBy className="text-center" />
       </div>
     </div>
   );

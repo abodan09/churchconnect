@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/components/ui/use-toast';
 import { Cloud, WifiOff, Loader2 } from 'lucide-react';
+import PoweredBy from '@/components/PoweredBy';
 
 export default function LocalSetupPage() {
   const { cloudSetup } = useAuth();
@@ -73,6 +74,8 @@ export default function LocalSetupPage() {
             After that, the app opens straight to your dashboard and works fully offline — you won’t be asked to sign in again on this device.
           </p>
         </div>
+
+        <PoweredBy className="text-center" />
       </div>
     </div>
   );

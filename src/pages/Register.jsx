@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { SignUp } from '@clerk/clerk-react';
 import { Church, Users } from 'lucide-react';
+import PoweredBy from '@/components/PoweredBy';
 
 export default function Register() {
   const [signupType, setSignupType] = useState(
@@ -93,6 +94,8 @@ export default function Register() {
           {' '}and{' '}
           <a href="/privacy" target="_blank" rel="noopener noreferrer" className="underline hover:text-foreground">Privacy Policy</a>.
         </p>
+
+        <PoweredBy className="text-center" />
       </div>
     </div>
   );
