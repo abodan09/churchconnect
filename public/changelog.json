@@ -1,5 +1,17 @@
 [
   {
+    "version": "1.4.0",
+    "date": "2026-07-23",
+    "title": "Sign in to the Desktop App with Your Cloud Account",
+    "features": [
+      "The standalone app now activates with your existing ChurchConnect account — sign in once with the same email and password (internet needed only for this one-time step)",
+      "After activation the app opens straight to your dashboard and works fully offline; it never asks you to sign in again on that device"
+    ],
+    "fixes": [
+      "Hardened the desktop's local server — removed cross-origin access and added loopback host checks so no website can reach it"
+    ]
+  },
+  {
     "version": "1.3.0",
     "date": "2026-07-23",
     "title": "Richer Member Profiles — Family, Address History & Giving",
