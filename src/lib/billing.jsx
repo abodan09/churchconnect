@@ -5,6 +5,12 @@ import { Link } from 'react-router-dom';
 const BILLING_ENABLED = import.meta.env.VITE_BILLING_ENABLED === 'true';
 const IS_ELECTRON = typeof window !== 'undefined' && !!window.electronAPI?.isElectron;
 
+// TESTING PHASE: unlock every tier-gated feature (Financial Reports, Attendance
+// Analytics, AI Assistant, …) so the whole product can be exercised in the real
+// world before monetization. This overrides VITE_BILLING_ENABLED — flip to false
+// (or delete) when you're ready to enforce plans in production.
+const UNLOCK_ALL_FOR_TESTING = true;
+
 // No-op hook — never calls Clerk's useAuth; safe in Electron or when billing is off
 function useNoopBilling() {
   return { has: () => true, enabled: false };
@@ -22,7 +28,7 @@ function useClerkBilling() {
 // Resolved once at module-load time so the hook identity is stable across renders.
 // Importing useAuth at the top level is fine — the error only fires when the hook
 // is *called* outside ClerkProvider, which useNoopBilling never does.
-export const useBilling = (IS_ELECTRON || !BILLING_ENABLED) ? useNoopBilling : useClerkBilling;
+export const useBilling = (UNLOCK_ALL_FOR_TESTING || IS_ELECTRON || !BILLING_ENABLED) ? useNoopBilling : useClerkBilling;
 
 /**
  * Declarative gate — mirrors Clerk's <Show when={{ plan/feature/permission }}>.

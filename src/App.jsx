@@ -50,11 +50,13 @@ import UpdateNotifier from './components/UpdateNotifier';
 import WhatsNewModal from './components/WhatsNewModal';
 import UserProfilePage from './pages/UserProfilePage';
 import JoinChurchPage from './pages/JoinChurchPage';
+import TermsPage from './pages/TermsPage';
+import PrivacyPage from './pages/PrivacyPage';
 
 const IS_ELECTRON = typeof window !== 'undefined' && !!window.electronAPI?.isElectron;
 
 // Use prefix matching so Clerk's sub-paths (/login/tasks/*, /register/verify-*) are treated as public
-const PUBLIC_PATH_PREFIXES = ['/login', '/register', '/request-access', '/forgot-password', '/reset-password'];
+const PUBLIC_PATH_PREFIXES = ['/login', '/register', '/request-access', '/forgot-password', '/reset-password', '/terms', '/privacy'];
 function isPublicPathname(pathname) {
   return PUBLIC_PATH_PREFIXES.some(p => pathname === p || pathname.startsWith(p + '/'));
 }
@@ -106,6 +108,8 @@ const AuthenticatedApp = () => {
         <Route path="/request-access" element={<RequestAccessPage />} />
         <Route path="/forgot-password" element={<ForgotPassword />} />
         <Route path="/reset-password" element={<ResetPassword />} />
+        <Route path="/terms" element={<TermsPage />} />
+        <Route path="/privacy" element={<PrivacyPage />} />
         <Route element={<Layout />}>
           <Route path="/" element={<Dashboard />} />
           <Route path="/portal" element={<MemberPortal />} />
@@ -144,6 +148,8 @@ const ELECTRON_NAV_ROUTES = (
     <Route path="/local-login" element={<LocalLoginPage />} />
     <Route path="/local-setup" element={<LocalSetupPage />} />
     <Route path="/setup" element={<ChurchSetupPage />} />
+    <Route path="/terms" element={<TermsPage />} />
+    <Route path="/privacy" element={<PrivacyPage />} />
     <Route element={<Layout />}>
       <Route path="/" element={<Dashboard />} />
       <Route path="/portal" element={<MemberPortal />} />
@@ -181,13 +187,15 @@ function ElectronApp() {
     );
   }
 
+  const LEGAL_PATHS = ['/terms', '/privacy'];
+
   // First-run: no local users exist yet
-  if (!hasSetup && location.pathname !== '/local-setup') {
+  if (!hasSetup && location.pathname !== '/local-setup' && !LEGAL_PATHS.includes(location.pathname)) {
     return <Navigate to="/local-setup" replace />;
   }
 
   // Not logged in
-  if (!isAuthenticated && !['/local-login', '/local-setup'].includes(location.pathname)) {
+  if (!isAuthenticated && !['/local-login', '/local-setup', ...LEGAL_PATHS].includes(location.pathname)) {
     return <Navigate to="/local-login" replace />;
   }
 
