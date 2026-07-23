@@ -4,9 +4,12 @@ import PoweredBy from "@/components/PoweredBy";
 // Shared shell for the public legal pages (Terms, Privacy). Self-contained and
 // styled without a typography plugin, so plain <h2>/<p>/<ul> inside `children`
 // are formatted consistently.
+const IS_ELECTRON = typeof window !== 'undefined' && !!window.electronAPI?.isElectron;
+
 export default function LegalPageLayout({ title, lastUpdated, children }) {
   return (
-    <div className="min-h-screen bg-background text-foreground">
+    // Reserve the desktop status bar's height so its fixed bar never covers the footer.
+    <div className={`min-h-screen bg-background text-foreground ${IS_ELECTRON ? 'pb-8' : ''}`}>
       <header className="border-b border-border">
         <div className="max-w-3xl mx-auto px-4 py-4 flex items-center justify-between">
           <Link to="/" className="flex items-center gap-2 font-bold">

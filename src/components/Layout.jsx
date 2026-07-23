@@ -133,7 +133,7 @@ export default function Layout() {
   const deptColor = isDeptRole && department?.color ? department.color : null;
 
   return (
-    <div className="flex h-screen bg-background overflow-hidden">
+    <div className={`flex ${IS_ELECTRON ? 'h-[calc(100vh-2rem)]' : 'h-screen'} bg-background overflow-hidden`}>
       {open && <div className="fixed inset-0 bg-black/40 z-20 lg:hidden" onClick={() => setOpen(false)} />}
 
       <aside className={`

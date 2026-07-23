@@ -46,7 +46,7 @@ import LocalSetupPage from './pages/LocalSetupPage';
 import LocalLoginPage from './pages/LocalLoginPage';
 import OnboardingPage from './pages/OnboardingPage';
 import PricingPage from './pages/PricingPage';
-import UpdateNotifier from './components/UpdateNotifier';
+import StatusBar from './components/StatusBar';
 import WhatsNewModal from './components/WhatsNewModal';
 import UserProfilePage from './pages/UserProfilePage';
 import JoinChurchPage from './pages/JoinChurchPage';
@@ -225,7 +225,7 @@ function App() {
             <QueryClientProvider client={queryClientInstance}>
               <Router>
                 <ElectronApp />
-                <UpdateNotifier />
+                <StatusBar />
               </Router>
               <Toaster />
             </QueryClientProvider>

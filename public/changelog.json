@@ -1,5 +1,18 @@
 [
   {
+    "version": "1.5.0",
+    "date": "2026-07-24",
+    "title": "Cloud Sync & a New Status Bar",
+    "features": [
+      "Automatic background cloud sync — the standalone app now keeps your members, giving, events and records in step with the cloud, syncing silently when you're online (and picking up right where it left off after being offline)",
+      "New status bar at the bottom of the desktop app showing your online status, cloud-sync status and when it last synced, and software-update progress",
+      "Software updates now download and install right from the status bar instead of a pop-up window"
+    ],
+    "fixes": [
+      "This first version of sync merges records (last edit wins) and does not remove deleted records or transfer uploaded files/photos yet — those will come in a later update"
+    ]
+  },
+  {
     "version": "1.4.0",
     "date": "2026-07-23",
     "title": "Sign in to the Desktop App with Your Cloud Account",
