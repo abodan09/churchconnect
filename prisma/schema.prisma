@@ -38,6 +38,11 @@ model UserProfile {
 }
 
 // ── Members ───────────────────────────────────────────────────────────────────
+// serverUpdatedAt is a server-assigned arrival clock (set to DB now() by a
+// trigger on every insert/update — see prisma/sql/sync_server_stamp.sql). Delta
+// sync watermarks/paginates the PULL on this column so a row pushed with a
+// backdated business `updatedAt` is still seen by other devices. `updatedAt`
+// stays the business edit time used only for last-write-wins.
 
 model Member {
   id                      String   @id @default(cuid())
@@ -69,6 +74,9 @@ model Member {
   created_by_id           String?
   createdAt               DateTime @default(now())
   updatedAt               DateTime @updatedAt
+  serverUpdatedAt         DateTime @default(now())
+
+  @@index([church_id, serverUpdatedAt])
 }
 
 // ── Member Relationships (family tree) ────────────────────────────────────────
@@ -90,10 +98,12 @@ model MemberRelationship {
   created_by_id     String?
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
+  serverUpdatedAt   DateTime @default(now())
 
   @@index([member_id])
   @@index([related_member_id])
   @@index([church_id])
+  @@index([church_id, serverUpdatedAt])
 }
 
 // ── Departments ───────────────────────────────────────────────────────────────
@@ -113,6 +123,9 @@ model Department {
   created_by_id        String?
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
+  serverUpdatedAt      DateTime @default(now())
+
+  @@index([church_id, serverUpdatedAt])
 }
 
 // ── Events ────────────────────────────────────────────────────────────────────
@@ -133,6 +146,9 @@ model Event {
   created_by_id   String?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
+  serverUpdatedAt DateTime @default(now())
+
+  @@index([church_id, serverUpdatedAt])
 }
 
 // ── Giving ────────────────────────────────────────────────────────────────────
@@ -152,6 +168,9 @@ model Giving {
   created_by_id    String?
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
+  serverUpdatedAt  DateTime @default(now())
+
+  @@index([church_id, serverUpdatedAt])
 }
 
 // ── Expenditures ──────────────────────────────────────────────────────────────
@@ -173,6 +192,9 @@ model Expenditure {
   created_by_id   String?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
+  serverUpdatedAt DateTime @default(now())
+
+  @@index([church_id, serverUpdatedAt])
 }
 
 // ── Attendance ────────────────────────────────────────────────────────────────
@@ -194,6 +216,9 @@ model Attendance {
   created_by_id   String?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
+  serverUpdatedAt DateTime @default(now())
+
+  @@index([church_id, serverUpdatedAt])
 }
 
 // ── Sermons ───────────────────────────────────────────────────────────────────
@@ -215,6 +240,9 @@ model Sermon {
   created_by_id    String?
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
+  serverUpdatedAt  DateTime @default(now())
+
+  @@index([church_id, serverUpdatedAt])
 }
 
 // ── Properties ────────────────────────────────────────────────────────────────
@@ -236,6 +264,9 @@ model Property {
   created_by_id            String?
   createdAt                DateTime @default(now())
   updatedAt                DateTime @updatedAt
+  serverUpdatedAt          DateTime @default(now())
+
+  @@index([church_id, serverUpdatedAt])
 }
 
 // ── Church Settings ───────────────────────────────────────────────────────────
@@ -299,6 +330,9 @@ model SmallGroup {
   created_by_id     String?
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
+  serverUpdatedAt   DateTime @default(now())
+
+  @@index([church_id, serverUpdatedAt])
 }
 
 model SmallGroupMember {
@@ -315,6 +349,9 @@ model SmallGroupMember {
   created_by_id String?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
+  serverUpdatedAt DateTime @default(now())
+
+  @@index([church_id, serverUpdatedAt])
 }
 
 // ── Pastoral Care ─────────────────────────────────────────────────────────────
@@ -338,6 +375,9 @@ model PastoralCare {
   created_by_id    String?
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
+  serverUpdatedAt  DateTime @default(now())
+
+  @@index([church_id, serverUpdatedAt])
 }
 
 // ── Volunteers ────────────────────────────────────────────────────────────────
@@ -359,6 +399,9 @@ model Volunteer {
   created_by_id   String?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
+  serverUpdatedAt DateTime @default(now())
+
+  @@index([church_id, serverUpdatedAt])
 }
 
 // ── Announcements ─────────────────────────────────────────────────────────────
@@ -380,4 +423,7 @@ model Announcement {
   created_by_id   String?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
+  serverUpdatedAt DateTime @default(now())
+
+  @@index([church_id, serverUpdatedAt])
 }

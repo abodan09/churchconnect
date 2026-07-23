@@ -8,8 +8,13 @@ import jwt from 'jsonwebtoken';
 //
 // Two ops:
 //   push: upsert the client's changed rows into the cloud (last-write-wins by
-//         updatedAt; NEVER deletes; timestamps preserved via raw SQL).
-//   pull: return cloud rows changed since a watermark, keyset-paginated.
+//         updatedAt; NEVER deletes; timestamps preserved via raw SQL). Rows that
+//         fail (e.g. a NOT-NULL violation) are reported back in `failed` so the
+//         client can retry them instead of silently dropping the write.
+//   pull: return cloud rows changed since a watermark, keyset-paginated by
+//         serverUpdatedAt (a server-assigned arrival clock stamped by a DB
+//         trigger — see prisma/sql/sync_server_stamp.sql) so a row carrying an
+//         old business updatedAt is still delivered to other devices.
 //
 // No CORS headers on purpose: called server-to-server by the desktop's main
 // process, never from a browser.
@@ -19,9 +24,28 @@ function getPrisma() { if (!_prisma) _prisma = new PrismaClient(); return _prism
 
 const DATE_COLS = new Set(['createdAt', 'updatedAt']);
 
+// Cloud columns that are NOT NULL with a default but are nullable locally. If the
+// client pushes a NULL we substitute the schema default so the INSERT never
+// violates the constraint (which would otherwise skip the row). Kept in sync with
+// prisma/schema.prisma @default(...) values.
+const NOT_NULL_DEFAULTS = {
+  members: { membership_status: 'active' },
+  departments: { media_upload_enabled: false, allowed_media_types: 'none', is_active: true },
+  events: { event_type: 'service', is_public: true },
+  givings: { type: 'tithe', payment_method: 'cash' },
+  expenditures: { approval_status: 'pending' },
+  attendances: { status: 'present' },
+  smallgroups: { type: 'bible_study', meeting_frequency: 'weekly', is_active: true, is_open: true },
+  smallgroupmembers: { role: 'member', is_active: true },
+  pastoralcares: { type: 'prayer_request', status: 'open', priority: 'normal', is_private: false },
+  volunteers: { status: 'pending', checked_in: false },
+  announcements: { audience: 'all', is_pinned: false, priority: 'normal', is_active: true },
+};
+
 // Static per-entity column lists — NEVER derived from the request, so the raw
 // SQL is injection- and drift-safe. Table = Postgres table name (Prisma model,
 // PascalCase, no @@map). model = Prisma client accessor for the pull query.
+// serverUpdatedAt is intentionally absent: it is owned by the DB trigger.
 const SYNC_ENTITIES = {
   members: { model: 'member', table: 'Member', cols: ['id', 'church_id', 'first_name', 'last_name', 'email', 'phone', 'address', 'address_history', 'department_id', 'department_name', 'join_date', 'membership_status', 'profile_photo_url', 'gender', 'date_of_birth', 'marital_status', 'occupation', 'emergency_contact_name', 'emergency_contact_phone', 'notes', 'user_id', 'baptism_date', 'membership_class_date', 'confirmation_date', 'volunteer_status', 'background_check_date', 'created_by_id', 'createdAt', 'updatedAt'] },
   memberrelationships: { model: 'memberRelationship', table: 'MemberRelationship', cols: ['id', 'church_id', 'member_id', 'relationship_type', 'related_member_id', 'related_name', 'related_phone', 'related_email', 'related_notes', 'created_by_id', 'createdAt', 'updatedAt'] },
@@ -52,11 +76,14 @@ function buildUpsertSql(table, cols) {
   );
 }
 
-function rowValues(row, cols, churchId) {
+function rowValues(row, cols, churchId, defaults) {
   return cols.map((c) => {
     if (c === 'church_id') return churchId; // forced from token, never from client
-    const v = row?.[c];
-    if (v === undefined || v === null) return null;
+    let v = row?.[c];
+    if (v === undefined || v === null) {
+      if (defaults && Object.prototype.hasOwnProperty.call(defaults, c)) return defaults[c];
+      return null;
+    }
     if (DATE_COLS.has(c)) { const d = new Date(v); return isNaN(d.getTime()) ? new Date() : d; }
     return v;
   });
@@ -76,53 +103,62 @@ export default async function handler(req, res) {
 
   const prisma = getPrisma();
   const body = req.body || {};
-  const serverTime = new Date().toISOString();
 
   try {
     if (body.op === 'push') {
       const changes = body.changes || {};
       const applied = {};
+      const failed = {};
       for (const [resource, rows] of Object.entries(changes)) {
         const ent = SYNC_ENTITIES[resource];
         if (!ent || !Array.isArray(rows)) continue;
         const sql = buildUpsertSql(ent.table, ent.cols);
+        const defaults = NOT_NULL_DEFAULTS[resource];
         let n = 0;
+        const fails = [];
         for (const row of rows) {
           if (!row?.id) continue;
           try {
-            const values = rowValues(row, ent.cols, churchId);
+            const values = rowValues(row, ent.cols, churchId, defaults);
             values.push(churchId); // church guard param
             await prisma.$executeRawUnsafe(sql, ...values);
             n += 1;
           } catch (e) {
             console.error(`[sync push] ${resource} ${row.id}:`, e?.message);
+            fails.push(String(row.id));
           }
         }
         applied[resource] = n;
+        if (fails.length) failed[resource] = fails;
       }
-      return res.status(200).json({ ok: true, serverTime, applied });
+      return res.status(200).json({ ok: true, serverTime: new Date().toISOString(), applied, failed });
     }
 
     if (body.op === 'pull') {
       const ent = SYNC_ENTITIES[body.entity];
       if (!ent) return res.status(400).json({ ok: false, error: 'Unknown entity' });
       const since = body.since ? new Date(body.since) : null;
-      const cursor = body.cursor && body.cursor.updatedAt ? body.cursor : null;
+      const cursor = body.cursor && body.cursor.serverUpdatedAt ? body.cursor : null;
       const limit = Math.min(Math.max(parseInt(body.limit, 10) || 300, 1), 500);
 
+      // Watermark base = the DATABASE clock (same clock the trigger stamps
+      // serverUpdatedAt with), so the client never mixes clocks.
+      const nowRows = await prisma.$queryRawUnsafe('SELECT now() AS now');
+      const serverTime = new Date(nowRows?.[0]?.now || Date.now()).toISOString();
+
       const and = [];
-      if (since && !isNaN(since.getTime())) and.push({ updatedAt: { gt: since } });
+      if (since && !isNaN(since.getTime())) and.push({ serverUpdatedAt: { gt: since } });
       if (cursor) {
-        const cu = new Date(cursor.updatedAt);
-        and.push({ OR: [{ updatedAt: { gt: cu } }, { AND: [{ updatedAt: cu }, { id: { gt: String(cursor.id || '') } }] }] });
+        const cu = new Date(cursor.serverUpdatedAt);
+        and.push({ OR: [{ serverUpdatedAt: { gt: cu } }, { AND: [{ serverUpdatedAt: cu }, { id: { gt: String(cursor.id || '') } }] }] });
       }
       const where = { church_id: churchId, ...(and.length ? { AND: and } : {}) };
-      const rows = await prisma[ent.model].findMany({ where, orderBy: [{ updatedAt: 'asc' }, { id: 'asc' }], take: limit + 1 });
+      const rows = await prisma[ent.model].findMany({ where, orderBy: [{ serverUpdatedAt: 'asc' }, { id: 'asc' }], take: limit + 1 });
 
       const hasMore = rows.length > limit;
       const page = hasMore ? rows.slice(0, limit) : rows;
       const last = page[page.length - 1];
-      const nextCursor = hasMore && last ? { updatedAt: last.updatedAt.toISOString(), id: last.id } : null;
+      const nextCursor = hasMore && last ? { serverUpdatedAt: last.serverUpdatedAt.toISOString(), id: last.id } : null;
       return res.status(200).json({ ok: true, serverTime, entity: body.entity, rows: page, hasMore, nextCursor });
     }
 
