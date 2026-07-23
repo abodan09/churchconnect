@@ -1,5 +1,22 @@
 [
   {
+    "version": "1.2.0",
+    "date": "2026-07-23",
+    "title": "Monthly Finance Dashboard & Sleeker Updates",
+    "features": [
+      "Dashboard finance cards are now monthly — Tithes, Offerings, Other Inflow and Approved Expenses each show the selected month with a week-by-week breakdown",
+      "Month navigator on the dashboard to view any month (January–December) and download that month's PDF report on the spot",
+      "New 'Other Inflow' / 'Others' giving bucket separates special offerings, thanksgiving, building fund and other income from regular offerings",
+      "Financial Reports page now switches month/year instantly, adds an 'Others' total, and is centered"
+    ],
+    "fixes": [
+      "Finance figures now use the church's configured currency instead of always showing the euro sign",
+      "Monthly totals load completely for any month regardless of how much giving history the church has",
+      "Cleaned up the financial-report PDF layout so sections no longer overlap",
+      "Desktop updates are now non-blocking: the update downloads in the background with a progress bar and applies when you click 'Update', instead of a pop-up that blocked the whole app"
+    ]
+  },
+  {
     "version": "1.1.1",
     "date": "2026-06-24",
     "title": "Critical Desktop Crash Fix",
