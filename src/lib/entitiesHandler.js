@@ -1,8 +1,12 @@
+// Shared generic-entity CRUD handler for the cloud API. Served by two explicit
+// dynamic routes — api/entities/[resource].js (list/create) and
+// api/entities/[resource]/[id].js (get/update/delete) — instead of a single
+// [...params] catch-all, because Vercel's catch-all only matched a single path
+// segment here (so /api/entities/<model>/<id> 404'd, breaking edit/delete).
 import { verifyToken } from '@clerk/backend';
 import { PrismaClient } from '@prisma/client';
 
 let _prisma = null;
-
 function getPrisma() {
   if (!_prisma) _prisma = new PrismaClient();
   return _prisma;
@@ -42,14 +46,14 @@ const MODELS_WITH_CREATOR = new Set([
   'volunteer','announcement',
 ]);
 
-/**
- * Verify the Clerk JWT and return { clerkId, churchId }.
- * churchId is resolved from UserProfile — null for brand-new users with no profile yet.
- */
 const AUTHORIZED_PARTIES = process.env.CLERK_AUTHORIZED_PARTIES
   ? process.env.CLERK_AUTHORIZED_PARTIES.split(',').map(s => s.trim())
   : ['https://church.frozenbit.eu', 'http://localhost:5173', 'http://localhost:3000'];
 
+/**
+ * Verify the Clerk JWT and return { clerkId, churchId }.
+ * churchId is resolved from UserProfile — null for brand-new users with no profile yet.
+ */
 async function resolveIdentity(req) {
   const auth = req.headers.authorization;
   if (!auth?.startsWith('Bearer ')) return { clerkId: null, churchId: null };
@@ -62,7 +66,6 @@ async function resolveIdentity(req) {
     const clerkId = payload?.sub;
     if (!clerkId) return { clerkId: null, churchId: null };
 
-    // One DB lookup per request — acceptable for church-scale traffic.
     const profile = await getPrisma().userProfile.findUnique({
       where:  { clerkId },
       select: { church_id: true },
@@ -73,7 +76,9 @@ async function resolveIdentity(req) {
   }
 }
 
-export default async function handler(req, res) {
+// `resource` and `id` come from the route (Vercel dynamic segments), NOT parsed
+// from a catch-all. `id` is undefined for the list/create route.
+export default async function entitiesHandler(req, res, resource, id) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization');
@@ -83,9 +88,6 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: 'DATABASE_URL is not set.' });
   }
 
-  const rawParams = req.query['...params'];
-  const params    = Array.isArray(rawParams) ? rawParams : rawParams ? rawParams.split('/') : [];
-  const [resource, id] = params;
   const model = MODEL_MAP[resource?.toLowerCase()];
   if (!model) return res.status(404).json({ error: 'Unknown resource' });
 
@@ -93,12 +95,7 @@ export default async function handler(req, res) {
   const db     = prisma[model];
   const FIELD_MAP = { created_date: 'createdAt', updated_date: 'updatedAt' };
 
-  // Resolve caller identity (clerkId + churchId from UserProfile).
   const { clerkId, churchId } = await resolveIdentity(req);
-
-  // UserProfile is special: it's the lookup source for churchId itself.
-  // We allow reading by clerkId without a church gate (needed during onboarding).
-  // All other scoped resources require a resolved churchId.
   const isUserProfileResource = model === 'userProfile';
 
   if (CHURCH_SCOPED.has(model) && !churchId) {
@@ -108,8 +105,9 @@ export default async function handler(req, res) {
   try {
     // ── GET list ────────────────────────────────────────────────────────────
     if (req.method === 'GET' && !id) {
-      const { sort, limit, ...filter } = req.query;
-      delete filter['...params'];
+      // Vercel merges the dynamic route params (resource/id) into req.query — drop
+      // them so they aren't treated as entity filters.
+      const { sort, limit, resource: _r, id: _i, ...filter } = req.query;
       Object.keys(filter).forEach(k => {
         if (filter[k] === 'true')  filter[k] = true;
         else if (filter[k] === 'false') filter[k] = false;
@@ -119,8 +117,6 @@ export default async function handler(req, res) {
       const orderBy     = prismaField ? { [prismaField]: sort.startsWith('-') ? 'desc' : 'asc' } : { createdAt: 'desc' };
       const take        = limit ? parseInt(limit) : 500;
 
-      // Support range/prefix filters via `<field>_<op>` query params
-      // (e.g. date_startsWith=2026-07). Plain keys stay exact-match.
       const where = {};
       for (const [k, val] of Object.entries(filter)) {
         const m = k.match(/^(.+)_(gte|lte|gt|lt|startsWith|contains)$/);
@@ -128,7 +124,6 @@ export default async function handler(req, res) {
         else where[k] = val;
       }
 
-      // Inject church scope (UserProfile: skip gate for clerkId-only queries)
       if (CHURCH_SCOPED.has(model)) {
         where.church_id = churchId;
       } else if (isUserProfileResource && !filter.clerkId) {
@@ -143,7 +138,6 @@ export default async function handler(req, res) {
     if (req.method === 'GET' && id) {
       const record = await db.findUnique({ where: { id } });
       if (!record) return res.status(404).json({ error: 'Not found' });
-      // Enforce church boundary — reject cross-church reads (userProfile included).
       if ((CHURCH_SCOPED.has(model) || isUserProfileResource) && record.church_id && record.church_id !== churchId) {
         return res.status(403).json({ error: 'Access denied' });
       }
@@ -153,20 +147,17 @@ export default async function handler(req, res) {
     // ── POST (create) ───────────────────────────────────────────────────────
     if (req.method === 'POST') {
       const data = { ...req.body };
-      // Always inject church_id from the server — clients never set it.
       if (CHURCH_SCOPED.has(model))  data.church_id     = churchId;
       if (isUserProfileResource) {
-        // Generic API can only self-provision a plain member into the CALLER's own
-        // church. church_id/role/clerkId are never client-settable (admin provisioning
-        // goes through /api/church-users). A churchless caller cannot create a profile
-        // (that would let them join an arbitrary church — tenant-isolation bypass).
+        // Self-provision only: never trust a client church_id/role/clerkId (admin
+        // provisioning goes through /api/church-users). A churchless caller cannot
+        // create a profile — that would be a tenant-isolation bypass.
         if (!churchId) return res.status(403).json({ error: 'No church associated with this account. Complete onboarding first.' });
         data.church_id = churchId;
         data.clerkId   = clerkId;
         data.role      = 'member';
       }
       if (clerkId && MODELS_WITH_CREATOR.has(model)) data.created_by_id = clerkId;
-      // Strip undefined/null loose values
       Object.keys(data).forEach(k => (data[k] === undefined || data[k] === null) && delete data[k]);
       const record = await db.create({ data });
       return res.status(201).json({ ...record, created_date: record.createdAt, updated_date: record.updatedAt });
@@ -174,21 +165,18 @@ export default async function handler(req, res) {
 
     // ── PUT / PATCH (update) ─────────────────────────────────────────────────
     if ((req.method === 'PUT' || req.method === 'PATCH') && id) {
-      // Verify the record belongs to this church before updating.
       if (CHURCH_SCOPED.has(model)) {
         const existing = await db.findUnique({ where: { id }, select: { church_id: true } });
         if (!existing) return res.status(404).json({ error: 'Not found' });
         if (existing.church_id !== churchId) return res.status(403).json({ error: 'Access denied' });
       }
-      // UserProfile: block cross-church edits; role/clerkId are NEVER mutable here
-      // (role changes go through the admin-gated /api/church-users endpoint).
+      // UserProfile: block cross-church edits; role/clerkId are NEVER mutable here.
       if (isUserProfileResource) {
         const existing = await db.findUnique({ where: { id }, select: { church_id: true } });
         if (!existing) return res.status(404).json({ error: 'Not found' });
         if (existing.church_id !== churchId) return res.status(403).json({ error: 'Access denied' });
       }
       const data = { ...req.body };
-      // Never let a client change church_id, id, or timestamps.
       delete data.id; delete data.church_id; delete data.createdAt;
       delete data.updatedAt; delete data.created_date; delete data.updated_date;
       if (isUserProfileResource) { delete data.role; delete data.clerkId; }
