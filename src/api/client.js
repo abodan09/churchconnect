@@ -117,3 +117,27 @@ export async function uploadFile(file) {
 export async function sendEmail({ to, subject, body, from_name }) {
   return request('POST', '/api/send-email', { to, subject, body, from_name });
 }
+
+// ── Admin user management (roles, invites, direct-create) ─────────────────────
+// One surface over two backends: the cloud church-users endpoint (Clerk-backed,
+// supports email invites) and the offline embedded server (local users, create-only).
+const IS_EL = typeof window !== 'undefined' && !!window.electronAPI?.isElectron;
+const CU_BASE = IS_EL ? '/api/auth/users' : '/api/church-users';
+
+export const churchUsers = {
+  supportsInvite: !IS_EL,
+  async list() {
+    const rows = await request('GET', CU_BASE);
+    return (rows || []).map(r => IS_EL
+      ? { key: r.id, name: r.full_name || r.email || '—', email: r.email || null, role: r.role, departmentId: r.department_id || null, isSelf: !!r.isSelf }
+      : { key: r.clerkId, name: r.name || '—', email: r.email || null, role: r.role, departmentId: r.departmentId || null, isSelf: !!r.isSelf, imageUrl: r.imageUrl || null });
+  },
+  add({ mode, email, first_name, last_name, role, department_id, member_id }) {
+    const full_name = [first_name, last_name].filter(Boolean).join(' ').trim() || undefined;
+    return request('POST', CU_BASE, { mode: mode || (IS_EL ? 'create' : 'invite'), email, first_name, last_name, full_name, role, department_id, member_id });
+  },
+  setRole({ target, role, department_id }) {
+    // send every target-key alias; each backend reads the one it uses
+    return request('PATCH', CU_BASE, { target, target_clerk_id: target, target_id: target, role, department_id });
+  },
+};

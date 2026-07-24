@@ -34,6 +34,8 @@ export default function Members() {
   async function loadData() {
     const [m, d] = await Promise.all([entities.Member.list("-created_date", 500), entities.Department.filter({ is_active: true })]);
     setMembers(m); setDepartments(d); setLoading(false);
+    // Keep an open detail sheet in sync (e.g. member.user_id after linking a login).
+    setDetailMember(prev => (prev ? (m.find(x => x.id === prev.id) || prev) : prev));
   }
 
   function openNew() { setForm(EMPTY); setEditId(null); setOpen(true); }

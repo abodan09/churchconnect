@@ -7,7 +7,7 @@ import {
   LayoutDashboard, Users, HandCoins, Receipt, Building2, Layers,
   Mic2, CalendarDays, ClipboardCheck, FileBarChart2, LogOut,
   Menu, ChevronRight, Home, PieChart, Settings, ShieldCheck,
-  UsersRound, Heart, UserCheck, Megaphone, Zap
+  UsersRound, Heart, UserCheck, Megaphone, Zap, UserCog
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import PoweredBy from "@/components/PoweredBy";
@@ -199,6 +199,18 @@ export default function Layout() {
               )}
               <p className="text-xs text-primary-foreground/50 capitalize">{role.replace(/_/g, " ")}</p>
             </div>
+          )}
+          {["super_admin", "pastor_admin"].includes(role) && (
+            <Link
+              to="/users-roles"
+              onClick={() => setOpen(false)}
+              className={`flex items-center gap-3 w-full px-3 py-2.5 rounded-lg text-sm transition-colors mb-1 ${
+                location.pathname === "/users-roles" ? "bg-white/20 text-white" : "text-primary-foreground/70 hover:bg-white/10 hover:text-white"
+              }`}
+            >
+              <UserCog className="w-4 h-4 flex-shrink-0" />
+              Users &amp; Roles
+            </Link>
           )}
           {["super_admin", "pastor_admin"].includes(role) && (
             <Link

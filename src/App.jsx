@@ -53,11 +53,13 @@ import JoinChurchPage from './pages/JoinChurchPage';
 import TermsPage from './pages/TermsPage';
 import PrivacyPage from './pages/PrivacyPage';
 import AboutPage from './pages/AboutPage';
+import UsersRolesPage from './pages/UsersRolesPage';
+import AcceptInvitePage from './pages/AcceptInvitePage';
 
 const IS_ELECTRON = typeof window !== 'undefined' && !!window.electronAPI?.isElectron;
 
 // Use prefix matching so Clerk's sub-paths (/login/tasks/*, /register/verify-*) are treated as public
-const PUBLIC_PATH_PREFIXES = ['/login', '/register', '/request-access', '/forgot-password', '/reset-password', '/terms', '/privacy', '/about'];
+const PUBLIC_PATH_PREFIXES = ['/login', '/register', '/request-access', '/forgot-password', '/reset-password', '/terms', '/privacy', '/about', '/accept-invite'];
 function isPublicPathname(pathname) {
   return PUBLIC_PATH_PREFIXES.some(p => pathname === p || pathname.startsWith(p + '/'));
 }
@@ -112,6 +114,7 @@ const AuthenticatedApp = () => {
         <Route path="/terms" element={<TermsPage />} />
         <Route path="/privacy" element={<PrivacyPage />} />
         <Route path="/about" element={<AboutPage />} />
+        <Route path="/accept-invite" element={<AcceptInvitePage />} />
         <Route element={<Layout />}>
           <Route path="/" element={<Dashboard />} />
           <Route path="/portal" element={<MemberPortal />} />
@@ -129,6 +132,7 @@ const AuthenticatedApp = () => {
           <Route path="/church-settings" element={<ChurchSettingsPage />} />
           <Route path="/profile" element={<UserProfilePage />} />
           <Route path="/access-requests" element={<AccessRequestsAdminPage />} />
+          <Route path="/users-roles" element={<UsersRolesPage />} />
           <Route path="/dept-dashboard" element={<DepartmentDashboard />} />
           <Route path="/small-groups" element={<SmallGroupsPage />} />
           <Route path="/pastoral-care" element={<PastoralCarePage />} />
@@ -168,6 +172,7 @@ const ELECTRON_NAV_ROUTES = (
       <Route path="/attendance-analytics" element={<AttendanceAnalyticsPage />} />
       <Route path="/church-settings" element={<ChurchSettingsPage />} />
       <Route path="/access-requests" element={<AccessRequestsAdminPage />} />
+      <Route path="/users-roles" element={<UsersRolesPage />} />
       <Route path="/dept-dashboard" element={<DepartmentDashboard />} />
       <Route path="/small-groups" element={<SmallGroupsPage />} />
       <Route path="/pastoral-care" element={<PastoralCarePage />} />

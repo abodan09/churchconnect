@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { entities } from "@/api/client";
+import { entities, churchUsers } from "@/api/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -94,18 +94,15 @@ export default function DepartmentsPage() {
   }
 
   async function handleSave() {
+    let deptId = editId;
     if (editId) await entities.Department.update(editId, form);
-    else await entities.Department.create(form);
+    else { const created = await entities.Department.create(form); deptId = created?.id; }
 
-    // If a head user was selected, update their UserProfile
-    if (form.head_user_id) {
-      try {
-        const profiles = await entities.UserProfile.filter({ clerkId: form.head_user_id });
-        const deptId = editId || ""; // will be set after creation
-        if (profiles.length) {
-          await entities.UserProfile.update(profiles[0].id, { role: "department_head", departmentId: deptId });
-        }
-      } catch {}
+    // If a head user (Clerk ID) was provided, set their role through the
+    // admin-gated endpoint — role changes no longer go through the entities API.
+    if (form.head_user_id?.trim() && deptId) {
+      try { await churchUsers.setRole({ target: form.head_user_id.trim(), role: "department_head", department_id: deptId }); }
+      catch (e) { console.warn("Head role assignment failed:", e?.message); }
     }
 
     setOpen(false);

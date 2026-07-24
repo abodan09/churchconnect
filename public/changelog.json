@@ -1,5 +1,19 @@
 [
   {
+    "version": "1.6.0",
+    "date": "2026-07-24",
+    "title": "Team Members, Invites & Roles",
+    "features": [
+      "New 'Users & Roles' admin page — invite teammates by email or create their login directly, and assign roles (Pastor, Finance Officer, Department Head, Data Entry) yourself",
+      "Give a member their own app login straight from their profile — 'Invite / Create login' with a role, which links the member to their account",
+      "The desktop app now supports multiple staff accounts on one device, each with their own role and sign-in (single-user installs still open straight to the dashboard)"
+    ],
+    "fixes": [
+      "Setup no longer asks new churches to pick a role — whoever creates the church is its administrator, and roles are assigned by admins afterwards",
+      "Hardened account security: roles can only be changed by administrators, and closed a loophole that could have exposed one church's data to another"
+    ]
+  },
+  {
     "version": "1.5.1",
     "date": "2026-07-24",
     "title": "Cloud Sync Reliability",

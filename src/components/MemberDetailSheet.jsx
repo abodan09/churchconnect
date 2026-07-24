@@ -1,5 +1,7 @@
 import { useState, useEffect } from "react";
 import { entities } from "@/api/client";
+import { useAuth } from "@/lib/ClerkAuthContext";
+import { AddUserDialog } from "@/pages/UsersRolesPage";
 import { useChurchSettings } from "@/lib/ChurchSettingsContext";
 import { makePdfMoneyFormatter } from "@/lib/finance";
 import { generateMemberStatementPDF } from "@/lib/memberStatement";
@@ -10,7 +12,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   HandCoins, HeartHandshake, Download, Printer, Pencil, Trash2, ChevronDown,
-  MapPin, Phone, Mail, Users2, Link2, UserPlus, Clock,
+  MapPin, Phone, Mail, Users2, Link2, UserPlus, Clock, KeyRound,
 } from "lucide-react";
 
 const REL_LABEL = { spouse: "Spouse", child: "Child", parent: "Parent" };
@@ -24,6 +26,9 @@ function parseHistory(json) {
 
 export default function MemberDetailSheet({ open, onOpenChange, member, members = [], onEdit, onOpenMember, onChanged }) {
   const { fmt, settings } = useChurchSettings() || {};
+  const { user } = useAuth();
+  const isAdmin = ["super_admin", "pastor_admin"].includes(user?.role);
+  const [showInvite, setShowInvite] = useState(false);
   const formatMoney = fmt || ((n) => `€${Number(n || 0).toLocaleString("en", { minimumFractionDigits: 2 })}`);
 
   const [giving, setGiving] = useState([]);
@@ -150,9 +155,20 @@ export default function MemberDetailSheet({ open, onOpenChange, member, members 
               </div>
             </div>
           </SheetHeader>
-          <Button size="sm" variant="secondary" className="mt-3 gap-1.5" onClick={() => onEdit?.(member)}>
-            <Pencil className="w-3.5 h-3.5" /> Edit member
-          </Button>
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <Button size="sm" variant="secondary" className="gap-1.5" onClick={() => onEdit?.(member)}>
+              <Pencil className="w-3.5 h-3.5" /> Edit member
+            </Button>
+            {member.user_id ? (
+              <span className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md bg-white/20 text-[11px] font-medium">
+                <KeyRound className="w-3.5 h-3.5" /> Has app login
+              </span>
+            ) : isAdmin ? (
+              <Button size="sm" variant="secondary" className="gap-1.5" onClick={() => setShowInvite(true)}>
+                <UserPlus className="w-3.5 h-3.5" /> Invite / Create login
+              </Button>
+            ) : null}
+          </div>
         </div>
 
         <div className="p-6 space-y-5">
@@ -278,6 +294,18 @@ export default function MemberDetailSheet({ open, onOpenChange, member, members 
             </div>
           </section>
         </div>
+
+        {showInvite && (
+          <AddUserDialog
+            memberId={member.id}
+            presetEmail={member.email || ""}
+            presetFirst={member.first_name || ""}
+            presetLast={member.last_name || ""}
+            title="Give this member an app login"
+            onClose={() => setShowInvite(false)}
+            onDone={() => { setShowInvite(false); onChanged?.(); }}
+          />
+        )}
       </SheetContent>
     </Sheet>
   );

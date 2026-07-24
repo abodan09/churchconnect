@@ -204,10 +204,10 @@ export default function VolunteerPage() {
             </div>
             <div className="sm:col-span-2">
               <Label>Event</Label>
-              <Select value={form.event_id} onValueChange={v => ff("event_id", v)}>
+              <Select value={form.event_id || "__none__"} onValueChange={v => ff("event_id", v === "__none__" ? "" : v)}>
                 <SelectTrigger className="mt-1"><SelectValue placeholder="Select event..." /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">No specific event</SelectItem>
+                  <SelectItem value="__none__">No specific event</SelectItem>
                   {events.map(e => <SelectItem key={e.id} value={e.id}>{e.title} — {e.start_datetime?.split("T")[0]}</SelectItem>)}
                 </SelectContent>
               </Select>
@@ -221,10 +221,10 @@ export default function VolunteerPage() {
             </div>
             <div>
               <Label>Department</Label>
-              <Select value={form.department_id} onValueChange={v => ff("department_id", v)}>
+              <Select value={form.department_id || "__none__"} onValueChange={v => ff("department_id", v === "__none__" ? "" : v)}>
                 <SelectTrigger className="mt-1"><SelectValue placeholder="Select dept..." /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">None</SelectItem>
+                  <SelectItem value="__none__">None</SelectItem>
                   {departments.map(d => <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>)}
                 </SelectContent>
               </Select>
