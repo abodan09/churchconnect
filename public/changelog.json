@@ -1,5 +1,14 @@
 [
   {
+    "version": "1.5.1",
+    "date": "2026-07-24",
+    "title": "Cloud Sync Reliability",
+    "features": [],
+    "fixes": [
+      "Cloud sync now keeps a durable, unbounded record of any records that couldn't sync on the first attempt and keeps retrying them until they succeed — across app restarts and large batches — so a record is never silently left behind"
+    ]
+  },
+  {
     "version": "1.5.0",
     "date": "2026-07-24",
     "title": "Cloud Sync & a New Status Bar",

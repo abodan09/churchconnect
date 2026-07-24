@@ -51,6 +51,13 @@ CREATE TABLE IF NOT EXISTS sync_meta (
   value TEXT
 );
 
+CREATE TABLE IF NOT EXISTS sync_dead_letter (
+  entity TEXT NOT NULL,
+  id TEXT NOT NULL,
+  failed_at TEXT DEFAULT (datetime('now')),
+  PRIMARY KEY (entity, id)
+);
+
 CREATE TABLE IF NOT EXISTS user_profiles (
   id TEXT PRIMARY KEY,
   clerkId TEXT UNIQUE,
@@ -534,6 +541,31 @@ const syncMeta = {
   },
 };
 
+// Dead-letter queue for rows the cloud rejected on push. A real table (not a
+// capped JSON blob) so it never evicts a still-failing row — the retry set is
+// the ONLY compensation once push_cursor advances past a row, so losing an entry
+// would be silent, permanent divergence.
+const deadLetter = {
+  addMany(pairs) {
+    if (!pairs || !pairs.length) return;
+    const stmt = getDb().prepare('INSERT INTO sync_dead_letter (entity, id, failed_at) VALUES (?, ?, ?) ON CONFLICT(entity, id) DO NOTHING');
+    const now = new Date().toISOString();
+    for (const p of pairs) { if (p && p.entity && p.id != null) stmt.run(p.entity, String(p.id), now); }
+  },
+  removeMany(entity, ids) {
+    if (!entity || !ids || !ids.length) return;
+    const list = ids.map(String);
+    const ph = list.map(() => '?').join(', ');
+    getDb().prepare(`DELETE FROM sync_dead_letter WHERE entity = ? AND id IN (${ph})`).run(entity, ...list);
+  },
+  all() {
+    return getDb().prepare('SELECT entity, id FROM sync_dead_letter').all();
+  },
+  count() {
+    return getDb().prepare('SELECT COUNT(*) AS c FROM sync_dead_letter').get().c;
+  },
+};
+
 const _colCache = new Map();
 function localColumns(tableName) {
   if (_colCache.has(tableName)) return _colCache.get(tableName);
@@ -599,4 +631,4 @@ function upsertRemoteRow(modelName, remoteRow) {
   return info.changes > 0;
 }
 
-module.exports = { initDb, getDb, createPrismaClient, localUsers, runInTransaction, syncMeta, localColumns, selectChangedSince, selectByIds, upsertRemoteRow };
+module.exports = { initDb, getDb, createPrismaClient, localUsers, runInTransaction, syncMeta, deadLetter, localColumns, selectChangedSince, selectByIds, upsertRemoteRow };
