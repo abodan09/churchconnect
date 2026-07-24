@@ -38,8 +38,33 @@ export default async function handler(req, res) {
 
   try {
     const prisma = getPrisma();
-    const profile = await prisma.userProfile.findUnique({ where: { clerkId } });
+    let profile = await prisma.userProfile.findUnique({ where: { clerkId } });
     console.log('[/api/me] clerkId:', clerkId, '→ church_id:', profile?.church_id ?? 'NOT FOUND');
+
+    // Lazy first-login provisioning: a user invited/created by an admin carries
+    // { church_id, role, department_id, member_id } in their Clerk publicMetadata.
+    // Read it authoritatively from the Backend API (not the JWT claim) and upsert.
+    if (!profile) {
+      try {
+        const clerkUser = await getClerk().users.getUser(clerkId);
+        const pm = clerkUser?.publicMetadata || {};
+        if (pm.church_id && pm.role) {
+          profile = await prisma.userProfile.upsert({
+            where: { clerkId },
+            create: { clerkId, church_id: pm.church_id, role: pm.role, departmentId: pm.department_id || null },
+            update: {}, // never let metadata overwrite an existing DB role
+          });
+          if (pm.member_id) {
+            await prisma.member.updateMany({
+              where: { id: pm.member_id, church_id: pm.church_id },
+              data: { user_id: clerkId },
+            }).catch(() => {});
+          }
+        }
+      } catch (e) {
+        console.warn('[/api/me] lazy provision skipped:', e?.message);
+      }
+    }
 
     if (!profile) return res.status(200).json(null);
 

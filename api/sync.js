@@ -47,7 +47,10 @@ const NOT_NULL_DEFAULTS = {
 // PascalCase, no @@map). model = Prisma client accessor for the pull query.
 // serverUpdatedAt is intentionally absent: it is owned by the DB trigger.
 const SYNC_ENTITIES = {
-  members: { model: 'member', table: 'Member', cols: ['id', 'church_id', 'first_name', 'last_name', 'email', 'phone', 'address', 'address_history', 'department_id', 'department_name', 'join_date', 'membership_status', 'profile_photo_url', 'gender', 'date_of_birth', 'marital_status', 'occupation', 'emergency_contact_name', 'emergency_contact_phone', 'notes', 'user_id', 'baptism_date', 'membership_class_date', 'confirmation_date', 'volunteer_status', 'background_check_date', 'created_by_id', 'createdAt', 'updatedAt'] },
+  // NOTE: user_id (the Member↔login link) is intentionally NOT synced — it is
+  // backend-specific (a Clerk id on the cloud, a local user id on the desktop), so
+  // syncing it would make one backend show a login that doesn't exist on the other.
+  members: { model: 'member', table: 'Member', cols: ['id', 'church_id', 'first_name', 'last_name', 'email', 'phone', 'address', 'address_history', 'department_id', 'department_name', 'join_date', 'membership_status', 'profile_photo_url', 'gender', 'date_of_birth', 'marital_status', 'occupation', 'emergency_contact_name', 'emergency_contact_phone', 'notes', 'baptism_date', 'membership_class_date', 'confirmation_date', 'volunteer_status', 'background_check_date', 'created_by_id', 'createdAt', 'updatedAt'] },
   memberrelationships: { model: 'memberRelationship', table: 'MemberRelationship', cols: ['id', 'church_id', 'member_id', 'relationship_type', 'related_member_id', 'related_name', 'related_phone', 'related_email', 'related_notes', 'created_by_id', 'createdAt', 'updatedAt'] },
   departments: { model: 'department', table: 'Department', cols: ['id', 'church_id', 'name', 'description', 'head_name', 'head_user_id', 'media_upload_enabled', 'allowed_media_types', 'is_active', 'color', 'allowed_features', 'created_by_id', 'createdAt', 'updatedAt'] },
   events: { model: 'event', table: 'Event', cols: ['id', 'church_id', 'title', 'description', 'department_id', 'department_name', 'start_datetime', 'end_datetime', 'location', 'event_type', 'is_public', 'created_by_name', 'created_by_id', 'createdAt', 'updatedAt'] },

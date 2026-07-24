@@ -143,8 +143,8 @@ export default async function handler(req, res) {
     if (req.method === 'GET' && id) {
       const record = await db.findUnique({ where: { id } });
       if (!record) return res.status(404).json({ error: 'Not found' });
-      // Enforce church boundary — reject cross-church reads.
-      if (CHURCH_SCOPED.has(model) && record.church_id && record.church_id !== churchId) {
+      // Enforce church boundary — reject cross-church reads (userProfile included).
+      if ((CHURCH_SCOPED.has(model) || isUserProfileResource) && record.church_id && record.church_id !== churchId) {
         return res.status(403).json({ error: 'Access denied' });
       }
       return res.status(200).json({ ...record, created_date: record.createdAt, updated_date: record.updatedAt });
@@ -155,7 +155,16 @@ export default async function handler(req, res) {
       const data = { ...req.body };
       // Always inject church_id from the server — clients never set it.
       if (CHURCH_SCOPED.has(model))  data.church_id     = churchId;
-      if (isUserProfileResource)     data.church_id     = churchId ?? data.church_id;
+      if (isUserProfileResource) {
+        // Generic API can only self-provision a plain member into the CALLER's own
+        // church. church_id/role/clerkId are never client-settable (admin provisioning
+        // goes through /api/church-users). A churchless caller cannot create a profile
+        // (that would let them join an arbitrary church — tenant-isolation bypass).
+        if (!churchId) return res.status(403).json({ error: 'No church associated with this account. Complete onboarding first.' });
+        data.church_id = churchId;
+        data.clerkId   = clerkId;
+        data.role      = 'member';
+      }
       if (clerkId && MODELS_WITH_CREATOR.has(model)) data.created_by_id = clerkId;
       // Strip undefined/null loose values
       Object.keys(data).forEach(k => (data[k] === undefined || data[k] === null) && delete data[k]);
@@ -171,10 +180,18 @@ export default async function handler(req, res) {
         if (!existing) return res.status(404).json({ error: 'Not found' });
         if (existing.church_id !== churchId) return res.status(403).json({ error: 'Access denied' });
       }
+      // UserProfile: block cross-church edits; role/clerkId are NEVER mutable here
+      // (role changes go through the admin-gated /api/church-users endpoint).
+      if (isUserProfileResource) {
+        const existing = await db.findUnique({ where: { id }, select: { church_id: true } });
+        if (!existing) return res.status(404).json({ error: 'Not found' });
+        if (existing.church_id !== churchId) return res.status(403).json({ error: 'Access denied' });
+      }
       const data = { ...req.body };
       // Never let a client change church_id, id, or timestamps.
       delete data.id; delete data.church_id; delete data.createdAt;
       delete data.updatedAt; delete data.created_date; delete data.updated_date;
+      if (isUserProfileResource) { delete data.role; delete data.clerkId; }
       Object.keys(data).forEach(k => data[k] === undefined && delete data[k]);
       const record = await db.update({ where: { id }, data });
       return res.status(200).json({ ...record, created_date: record.createdAt, updated_date: record.updatedAt });
@@ -182,6 +199,9 @@ export default async function handler(req, res) {
 
     // ── DELETE ───────────────────────────────────────────────────────────────
     if (req.method === 'DELETE' && id) {
+      // Profiles are never deletable via the generic API (no role/last-admin guard
+      // here) — deleting an admin's profile would orphan the church. Blocked.
+      if (isUserProfileResource) return res.status(403).json({ error: 'User profiles cannot be deleted here.' });
       if (CHURCH_SCOPED.has(model)) {
         const existing = await db.findUnique({ where: { id }, select: { church_id: true } });
         if (!existing) return res.status(404).json({ error: 'Not found' });
