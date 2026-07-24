@@ -515,6 +515,16 @@ const localUsers = {
   updateDepartment(id, department_id) {
     getDb().prepare('UPDATE local_users SET department_id = ? WHERE id = ?').run(department_id, id);
   },
+  list() {
+    return getDb().prepare('SELECT id, email, full_name, role, department_id, created_at FROM local_users ORDER BY created_at ASC').all();
+  },
+  updateRole(id, role, department_id) {
+    getDb().prepare('UPDATE local_users SET role = ?, department_id = ? WHERE id = ?').run(role, department_id ?? null, id);
+    return this.findById(id);
+  },
+  countByRole(role) {
+    return getDb().prepare('SELECT COUNT(*) as c FROM local_users WHERE role = ?').get(role).c;
+  },
 };
 
 // ── Sync helpers ──────────────────────────────────────────────────────────────
@@ -617,6 +627,9 @@ function upsertRemoteRow(modelName, remoteRow) {
   for (const [k, v] of Object.entries(prepared)) {
     if (allow.has(k)) data[k] = v === undefined ? null : v;
   }
+  // Member↔login link is device-local (see api/sync.js) — never let a pulled row
+  // set/overwrite it with the other backend's id namespace.
+  if (modelName === 'member') delete data.user_id;
   if (!data.id) return false;
   const cols = Object.keys(data);
   const colList = cols.map((c) => `"${c}"`).join(', ');

@@ -2,8 +2,13 @@
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 
-const JWT_SECRET = process.env.LOCAL_JWT_SECRET || 'churchconnect-local-secret-change-in-production';
 const JWT_EXPIRY = '30d';
+
+// Read lazily so main.cjs can inject a per-device random LOCAL_JWT_SECRET before
+// the first token is signed. The hardcoded fallback is a last resort only (dev).
+function getSecret() {
+  return process.env.LOCAL_JWT_SECRET || 'churchconnect-local-secret-change-in-production';
+}
 
 async function hashPassword(plain) {
   return bcrypt.hash(plain, 12);
@@ -14,12 +19,12 @@ async function verifyPassword(plain, hash) {
 }
 
 function signToken(payload) {
-  return jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_EXPIRY });
+  return jwt.sign(payload, getSecret(), { expiresIn: JWT_EXPIRY });
 }
 
 function verifyToken(token) {
   try {
-    return jwt.verify(token, JWT_SECRET);
+    return jwt.verify(token, getSecret());
   } catch {
     return null;
   }
@@ -37,4 +42,22 @@ function authMiddleware(req, res, next) {
   next();
 }
 
-module.exports = { hashPassword, verifyPassword, signToken, verifyToken, authMiddleware };
+// Layer after authMiddleware: only allow the given roles through. Resolves the
+// LIVE role from local_users (not the 30-day JWT claim) so an admin's demotion
+// takes effect immediately rather than lingering until the token expires.
+function requireRole(...roles) {
+  return (req, res, next) => {
+    if (!req.localUser) return res.status(401).json({ error: 'Unauthorized' });
+    try {
+      const { localUsers } = require('./db.cjs');
+      const fresh = localUsers.findById(req.localUser.sub);
+      if (!fresh) return res.status(401).json({ error: 'Unknown user' });
+      req.localUser.role = fresh.role;                 // overwrite stale token role with live DB role
+      req.localUser.department_id = fresh.department_id;
+    } catch { /* DB unavailable — fall back to token role */ }
+    if (!roles.includes(req.localUser.role)) return res.status(403).json({ error: 'Admin access required' });
+    next();
+  };
+}
+
+module.exports = { hashPassword, verifyPassword, signToken, verifyToken, authMiddleware, requireRole };

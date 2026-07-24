@@ -156,8 +156,23 @@ function buildMenu() {
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
+// Per-device signing key for the local JWTs — generated once and persisted in
+// userData, so packaged builds never fall back to the shared hardcoded secret
+// (which would let a low-privileged local user forge an admin token).
+function ensureLocalJwtSecret() {
+  try {
+    const p = path.join(app.getPath('userData'), 'device-secret');
+    if (fs.existsSync(p)) { const s = fs.readFileSync(p, 'utf8').trim(); if (s) return s; }
+    const s = require('crypto').randomBytes(32).toString('hex');
+    fs.writeFileSync(p, s, { mode: 0o600 });
+    return s;
+  } catch { return null; }
+}
+
 async function startLocalServer() {
   const userDataPath = app.getPath('userData');
+  const secret = ensureLocalJwtSecret();
+  if (secret) process.env.LOCAL_JWT_SECRET = secret;
   initDb(userDataPath);
 
   const expressApp = createServer(userDataPath);

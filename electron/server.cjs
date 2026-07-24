@@ -2,8 +2,15 @@
 const express = require('express');
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 const { createPrismaClient, localUsers } = require('./db.cjs');
-const { hashPassword, verifyPassword, signToken, authMiddleware } = require('./auth.cjs');
+const { hashPassword, verifyPassword, signToken, authMiddleware, requireRole } = require('./auth.cjs');
+
+const ROLE_SET = ['super_admin', 'pastor_admin', 'finance_officer', 'department_head', 'data_entry_staff', 'member'];
+const ELEVATED = ['super_admin', 'pastor_admin'];
+function makeTempPassword() {
+  return crypto.randomBytes(12).toString('base64').replace(/[^a-zA-Z0-9]/g, '').slice(0, 14) + 'A9!';
+}
 
 // Where the standalone app verifies cloud credentials on first launch.
 const CLOUD_URL = process.env.CHURCHCONNECT_CLOUD_URL || 'https://church.frozenbit.eu';
@@ -68,7 +75,8 @@ function createServer(userDataPath) {
   // ── Auth routes ──────────────────────────────────────────────────────────────
 
   app.get('/api/auth/status', (req, res) => {
-    res.json({ hasUsers: localUsers.count() > 0 });
+    const count = localUsers.count();
+    res.json({ hasUsers: count > 0, userCount: count });
   });
 
   app.post('/api/auth/setup', async (req, res) => {
@@ -130,6 +138,9 @@ function createServer(userDataPath) {
   // Auto-login for an already-activated device (never ask again). The embedded
   // server binds to localhost, so only this desktop app can reach it.
   app.post('/api/auth/session', (req, res) => {
+    // Zero-friction auto-login only when there's exactly one local user. With
+    // several users the caller must sign in explicitly (can't guess who).
+    if (localUsers.count() > 1) return res.status(409).json({ error: 'Multiple users — please sign in.' });
     const user = localUsers.first();
     if (!user) return res.status(404).json({ error: 'Not activated' });
     const token = signToken({ sub: user.id, email: user.email, role: user.role, full_name: user.full_name, department_id: user.department_id });
@@ -154,6 +165,60 @@ function createServer(userDataPath) {
     const user = localUsers.findById(req.localUser.sub);
     if (!user) return res.status(404).json({ error: 'User not found' });
     res.json({ id: user.id, email: user.email, full_name: user.full_name, role: user.role, department_id: user.department_id });
+  });
+
+  // ── User management (admin-only, multi-user) ─────────────────────────────────
+  // Offline mirror of the cloud /api/church-users endpoint. No email invites
+  // (there is no mailer on localhost) — direct-create only, returning a one-time
+  // password to share. local_users are device-local (NOT synced).
+
+  app.get('/api/auth/users', authMiddleware, requireRole(...ELEVATED), (req, res) => {
+    const rows = localUsers.list().map(u => ({
+      id: u.id, email: u.email, full_name: u.full_name, role: u.role,
+      department_id: u.department_id || null, isSelf: u.id === req.localUser.sub,
+    }));
+    res.json(rows);
+  });
+
+  app.post('/api/auth/users', authMiddleware, requireRole(...ELEVATED), async (req, res) => {
+    try {
+      const { email, full_name, role, department_id, member_id } = req.body || {};
+      if (!email?.trim()) return res.status(400).json({ error: 'email is required' });
+      if (!ROLE_SET.includes(role)) return res.status(400).json({ error: 'invalid role' });
+      if (ELEVATED.includes(role) && req.localUser.role !== 'super_admin') {
+        return res.status(403).json({ error: 'Only a super admin can grant admin roles.' });
+      }
+      if (localUsers.findByEmail(email.trim())) return res.status(400).json({ error: 'A user with that email already exists.' });
+      const pw = makeTempPassword();
+      const password_hash = await hashPassword(pw);
+      const deptId = role === 'department_head' ? (department_id || null) : null;
+      const user = localUsers.create({ email: email.trim(), password_hash, full_name, role, department_id: deptId });
+      if (member_id) { try { _prisma.member.update({ where: { id: member_id }, data: { user_id: user.id } }); } catch (e) { console.warn('[users] member link skipped:', e.message); } }
+      res.status(201).json({ ok: true, mode: 'create', tempPassword: pw, email: user.email, id: user.id });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.patch('/api/auth/users', authMiddleware, requireRole(...ELEVATED), (req, res) => {
+    try {
+      const { target_id, role, department_id } = req.body || {};
+      if (!target_id) return res.status(400).json({ error: 'target_id is required' });
+      if (!ROLE_SET.includes(role)) return res.status(400).json({ error: 'invalid role' });
+      const target = localUsers.findById(target_id);
+      if (!target) return res.status(404).json({ error: 'User not found' });
+      if ((ELEVATED.includes(role) || ELEVATED.includes(target.role)) && req.localUser.role !== 'super_admin') {
+        return res.status(403).json({ error: 'Only a super admin can change admin roles.' });
+      }
+      if (target.role === 'super_admin' && role !== 'super_admin' && localUsers.countByRole('super_admin') <= 1) {
+        return res.status(400).json({ error: 'This device must keep at least one super admin.' });
+      }
+      const deptId = role === 'department_head' ? (department_id || null) : null;
+      const updated = localUsers.updateRole(target_id, role, deptId);
+      res.json({ ok: true, id: target_id, role: updated.role, department_id: updated.department_id || null });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
   });
 
   // ── File upload ──────────────────────────────────────────────────────────────

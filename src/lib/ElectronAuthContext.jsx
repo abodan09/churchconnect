@@ -14,10 +14,11 @@ export function ElectronAuthProvider({ children }) {
   // local session (never ask again). Otherwise, flag first-run activation.
   useEffect(() => {
     (async () => {
-      let hasUsers = false;
+      let hasUsers = false, userCount = 0;
       try {
         const s = await fetch(`${API_BASE}/api/auth/status`).then(r => r.json());
         hasUsers = !!s.hasUsers;
+        userCount = s.userCount ?? (hasUsers ? 1 : 0);
         setHasSetup(hasUsers);
       } catch {
         setHasSetup(false);
@@ -26,18 +27,35 @@ export function ElectronAuthProvider({ children }) {
       }
       // A failure of the auto-login step must NOT clear hasSetup — the device is
       // still activated; we just fall through to the offline fallback login.
-      if (hasUsers) {
-        try {
-          const r = await fetch(`${API_BASE}/api/auth/session`, { method: 'POST' });
-          if (r.ok) {
-            const { token, user } = await r.json();
-            localStorage.setItem(TOKEN_KEY, token);
-            setLocalUser({ ...user, token });
-          } else {
+      // A recent explicit Sign Out suppresses auto-login until the next real sign-in
+      // (otherwise single-user auto-session would immediately re-log the user in).
+      const signedOut = (() => { try { return sessionStorage.getItem('cc_signed_out') === '1'; } catch { return false; } })();
+      if (hasUsers && !signedOut) {
+        // 1) Reuse a still-valid session token (works for single- AND multi-user;
+        //    /me returns the live role so admin role changes take effect on relaunch).
+        const existing = localStorage.getItem(TOKEN_KEY);
+        if (existing) {
+          try {
+            const me = await fetch(`${API_BASE}/api/auth/me`, { headers: { Authorization: `Bearer ${existing}` } });
+            if (me.ok) { const user = await me.json(); setLocalUser({ ...user, token: existing }); setLoading(false); return; }
+          } catch { /* fall through */ }
+          localStorage.removeItem(TOKEN_KEY);
+        }
+        // 2) No valid token: zero-friction auto-login only for a single-user device.
+        //    With several users, land on the sign-in screen so the right one is chosen.
+        if (userCount === 1) {
+          try {
+            const r = await fetch(`${API_BASE}/api/auth/session`, { method: 'POST' });
+            if (r.ok) {
+              const { token, user } = await r.json();
+              localStorage.setItem(TOKEN_KEY, token);
+              setLocalUser({ ...user, token });
+            } else {
+              localStorage.removeItem(TOKEN_KEY);
+            }
+          } catch {
             localStorage.removeItem(TOKEN_KEY);
           }
-        } catch {
-          localStorage.removeItem(TOKEN_KEY);
         }
       }
       setLoading(false);
@@ -56,6 +74,7 @@ export function ElectronAuthProvider({ children }) {
     }
     const { token, user } = await res.json();
     localStorage.setItem(TOKEN_KEY, token);
+    try { sessionStorage.removeItem('cc_signed_out'); } catch {}
     setLocalUser({ ...user, token });
     return user;
   }, []);
@@ -72,6 +91,7 @@ export function ElectronAuthProvider({ children }) {
     }
     const { token, user } = await res.json();
     localStorage.setItem(TOKEN_KEY, token);
+    try { sessionStorage.removeItem('cc_signed_out'); } catch {}
     setHasSetup(true);
     setLocalUser({ ...user, token });
     return user;
@@ -91,6 +111,7 @@ export function ElectronAuthProvider({ children }) {
     }
     const { token, user } = await res.json();
     localStorage.setItem(TOKEN_KEY, token);
+    try { sessionStorage.removeItem('cc_signed_out'); } catch {}
     setHasSetup(true);
     setLocalUser({ ...user, token });
     return user;
@@ -98,6 +119,7 @@ export function ElectronAuthProvider({ children }) {
 
   const signOut = useCallback((url) => {
     localStorage.removeItem(TOKEN_KEY);
+    try { sessionStorage.setItem('cc_signed_out', '1'); } catch {}
     setLocalUser(null);
     if (url && typeof window !== 'undefined') window.location.href = url;
   }, []);
