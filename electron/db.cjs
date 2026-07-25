@@ -609,14 +609,14 @@ function selectChangedSince(modelName, sinceIso, { limit = 200, cursor = null } 
 }
 
 // Exact, anchored hostname allowlist for the media proxy + prefetch (shared by
-// server.cjs and sync.cjs so they can't drift). Vercel Blob (logos/photos), R2
-// public sermon hosts (both the r2.dev testing host and the intended custom
-// domain — a switch must not orphan already-stored URLs), and NOTHING else. Never
-// a substring match; never r2.cloudflarestorage.com (that is the PRIVATE S3
-// endpoint that also fronts the receipts bucket).
+// server.cjs and sync.cjs so they can't drift). Vercel Blob (logos/photos) + the
+// R2 public sermon custom domain, and NOTHING else. The broad *.r2.dev testing
+// host was dropped once every sermon moved to media.church.frozenbit.eu (no stored
+// sermon uses an r2.dev URL), closing an open-fetch of the shared r2.dev namespace.
+// Never a substring match; never r2.cloudflarestorage.com (the PRIVATE S3 endpoint
+// that fronts the receipts bucket).
 const MEDIA_HOST_PATTERNS = [
   /(^|\.)blob\.vercel-storage\.com$/,
-  /(^|\.)r2\.dev$/,
   /^media\.church\.frozenbit\.eu$/,
 ];
 function isAllowedMediaHost(hostname) {
