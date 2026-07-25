@@ -1,8 +1,9 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useLayoutEffect } from 'react';
 import { Bot, X, Send, Loader2, ChevronDown, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useChurchSettings } from '@/lib/ChurchSettingsContext';
 import { useBilling } from '@/lib/billing';
+import { useDraggable } from '@/hooks/useDraggable';
 
 const AGENTS = [
   { id: 'pastoral', label: 'Pastoral', description: 'Members, care & general questions' },
@@ -48,8 +49,20 @@ export default function AIAssistant() {
   const { settings } = useChurchSettings();
   // has({ permission: 'org:ai:access' }) — permission check (Clerk B2B billing)
   const { has } = useBilling();
+  const panelRef = useRef(null);
+  const buttonRef = useRef(null);
+  // Clamp against whichever element is on screen (the small button, or the large
+  // panel dragged by its short header) so nothing can be pushed off-screen.
+  const drag = useDraggable('cc_ai_pos', { right: 20, bottom: 20 }, () => (open ? panelRef.current : buttonRef.current));
 
   const selectedAgent = AGENTS.find(a => a.id === agentType);
+
+  // Start a drag only from the header's empty area — never when the pointer lands on
+  // a control (agent picker, close button), so those still click normally.
+  const onHeaderPointerDown = (e) => {
+    if (e.target.closest('button, input, textarea, a')) return;
+    drag.onPointerDown(e);
+  };
 
   // Hide the entire assistant if the org doesn't have AI access permission
   if (!has({ permission: 'org:ai:access' })) return null;
@@ -70,6 +83,13 @@ export default function AIAssistant() {
 
   useEffect(() => {
     if (open) inputRef.current?.focus();
+  }, [open]);
+
+  // Re-clamp the shared position whenever what's rendered changes size (button <->
+  // panel). useLayoutEffect runs before paint, so the panel never flashes at a
+  // stale, button-sized offset before being corrected.
+  useLayoutEffect(() => {
+    drag.reclamp();
   }, [open]);
 
   const buildContext = () => {
@@ -176,10 +196,15 @@ export default function AIAssistant() {
   if (!open) {
     return (
       <button
-        onClick={() => setOpen(true)}
-        className="fixed bottom-5 right-5 z-50 w-13 h-13 rounded-full bg-primary text-primary-foreground shadow-lg hover:scale-105 active:scale-95 transition-transform flex items-center justify-center"
-        aria-label="Open AI Assistant"
-        style={{ width: 52, height: 52 }}
+        ref={buttonRef}
+        onClick={(e) => { if (drag.wasDrag()) { e.preventDefault(); return; } setOpen(true); }}
+        onPointerDown={drag.onPointerDown}
+        onPointerMove={drag.onPointerMove}
+        onPointerUp={drag.onPointerUp}
+        onPointerCancel={drag.onPointerCancel}
+        className="fixed z-50 rounded-full bg-primary text-primary-foreground shadow-lg hover:scale-105 active:scale-95 transition-transform flex items-center justify-center"
+        aria-label="Open AI Assistant (drag to move)"
+        style={{ width: 52, height: 52, ...drag.style, touchAction: 'none', userSelect: 'none', cursor: drag.dragging ? 'grabbing' : 'grab' }}
       >
         <Bot className="w-6 h-6" />
       </button>
@@ -187,9 +212,16 @@ export default function AIAssistant() {
   }
 
   return (
-    <div className="fixed bottom-4 right-4 z-50 flex flex-col w-[360px] max-w-[calc(100vw-2rem)] h-[520px] max-h-[calc(100vh-5rem)] rounded-2xl shadow-2xl border border-border bg-background overflow-hidden">
-      {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b bg-primary text-primary-foreground flex-shrink-0">
+    <div ref={panelRef} className="fixed z-50 flex flex-col w-[360px] max-w-[calc(100vw-2rem)] h-[520px] max-h-[calc(100vh-5rem)] rounded-2xl shadow-2xl border border-border bg-background overflow-hidden" style={{ ...drag.style }}>
+      {/* Header — drag handle */}
+      <div
+        className="flex items-center justify-between px-4 py-3 border-b bg-primary text-primary-foreground flex-shrink-0"
+        onPointerDown={onHeaderPointerDown}
+        onPointerMove={drag.onPointerMove}
+        onPointerUp={drag.onPointerUp}
+        onPointerCancel={drag.onPointerCancel}
+        style={{ cursor: drag.dragging ? 'grabbing' : 'grab', touchAction: 'none', userSelect: 'none' }}
+      >
         <div className="flex items-center gap-2">
           <Sparkles className="w-4 h-4" />
           <span className="font-semibold text-sm">AI Assistant</span>
