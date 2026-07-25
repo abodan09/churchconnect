@@ -39,3 +39,6 @@ C:\ChurchConnect-dist/
 # Dev output logs
 dev-error.txt
 dev-output.txt
+
+.env*
+!.env.example

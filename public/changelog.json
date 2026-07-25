@@ -1,5 +1,18 @@
 [
   {
+    "version": "1.7.0",
+    "date": "2026-07-25",
+    "title": "Photos, Logos & Sermon Media Everywhere",
+    "features": [
+      "Uploaded files — church logo, sermon audio/video, photos and documents — now sync between the cloud and your devices, and are cached locally so they still open when you're offline",
+      "Large sermon recordings upload directly and reliably — no more size wall"
+    ],
+    "fixes": [
+      "A file uploaded on the desktop now becomes available in the cloud and on your other devices once it syncs (previously it stayed on that one computer)",
+      "Uploads are now authenticated and restricted to media/document types"
+    ]
+  },
+  {
     "version": "1.6.0",
     "date": "2026-07-24",
     "title": "Team Members, Invites & Roles",

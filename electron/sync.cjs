@@ -1,6 +1,8 @@
 'use strict';
 const crypto = require('crypto');
-const { safeStorage } = require('electron');
+const fs = require('fs');
+const path = require('path');
+const { safeStorage, app } = require('electron');
 const db = require('./db.cjs');
 
 // Background sync engine (main process). Bidirectional, last-write-wins,
@@ -171,6 +173,121 @@ async function pushEntityRows(token, entity, rows) {
   return failed;
 }
 
+// ── File sync (media bytes) ─────────────────────────────────────────────────
+const FILE_MAX_BUFFERED = 4 * 1024 * 1024;   // buffered cloud-upload limit (Vercel body cap)
+const FILE_MAX_LARGE = 200 * 1024 * 1024;    // above this, a file stays device-local
+const PREFETCH_MAX = 25 * 1024 * 1024;       // auto-cache pulled files up to this size
+const LOCAL_UPLOAD_RE = /^http:\/\/(?:localhost|127\.0\.0\.1):\d+\/uploads\/(.+)$/;
+const BLOB_URL_RE = /\.blob\.vercel-storage\.com\//;
+const CT_BY_EXT = { '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.gif': 'image/gif', '.webp': 'image/webp', '.svg': 'image/svg+xml', '.mp3': 'audio/mpeg', '.m4a': 'audio/mp4', '.wav': 'audio/wav', '.ogg': 'audio/ogg', '.mp4': 'video/mp4', '.webm': 'video/webm', '.mov': 'video/quicktime', '.pdf': 'application/pdf' };
+
+function userData() { return app.getPath('userData'); }
+function guessContentType(p) { return CT_BY_EXT[path.extname(p).toLowerCase()] || 'application/octet-stream'; }
+function localPathFromUrl(url) {
+  const m = LOCAL_UPLOAD_RE.exec(url || '');
+  return m ? path.join(userData(), 'uploads', decodeURIComponent(m[1])) : null;
+}
+function cacheKey(url) { return crypto.createHash('sha256').update(url).digest('hex'); }
+
+// Copy a just-uploaded local file into the media cache under its canonical key,
+// so it keeps rendering offline the instant its field flips to the Blob URL.
+function cacheLocalAs(canonicalUrl, srcPath) {
+  const dest = path.join(userData(), 'media-cache', cacheKey(canonicalUrl));
+  if (fs.existsSync(dest)) return;
+  fs.copyFileSync(srcPath, dest);
+  try { fs.writeFileSync(dest + '.meta', JSON.stringify({ contentType: guessContentType(srcPath), size: fs.statSync(srcPath).size, url: canonicalUrl })); } catch {}
+}
+
+// Upload one local file to the cloud Blob; returns the canonical URL, or null if
+// it can't (offline / too big). Throws only on auth. Small files stream through
+// the buffered function; large files go direct-to-blob (bypassing the 4.5 MB
+// function limit). Uses statSync so a big file isn't read into memory just to
+// classify it.
+async function uploadLocalFile(token, filePath, churchId) {
+  let size;
+  try { size = fs.statSync(filePath).size; } catch { return null; }
+  if (size <= 0 || size > FILE_MAX_LARGE) return null; // absurdly large -> stays local
+  try {
+    if (size <= FILE_MAX_BUFFERED) {
+      const { status, json } = await fetchJson(`${_cloudUrl}/api/upload`, {
+        method: 'POST',
+        headers: { 'Content-Type': guessContentType(filePath), 'X-Filename': path.basename(filePath), Authorization: `Bearer ${token}` },
+        body: fs.readFileSync(filePath),
+      }, 120000);
+      if (status === 401) throw Object.assign(new Error('auth'), { kind: 'auth' });
+      if (status === 413) return null;
+      return json?.file_url || null;
+    }
+    // Large file: direct-to-blob via the client-upload token endpoint.
+    if (!churchId) return null;
+    const { upload } = await import('@vercel/blob/client');
+    const pathname = `churches/${churchId}/${crypto.randomUUID()}${path.extname(filePath).toLowerCase()}`;
+    const blob = await upload(pathname, fs.readFileSync(filePath), {
+      access: 'public',
+      contentType: guessContentType(filePath),
+      handleUploadUrl: `${_cloudUrl}/api/blob-upload-token`,
+      clientPayload: token,
+    });
+    return blob?.url || null;
+  } catch (e) {
+    if (e?.kind === 'auth') throw e;
+    return null; // network/offline -> retry next cycle (field keeps its local URL)
+  }
+}
+
+// Phase 0: upload any local-only file bytes to the cloud and rewrite the field to
+// the canonical Blob URL BEFORE the metadata push, so the push carries the
+// portable URL. Covers offline-created files AND legacy uploads/ URLs. The local
+// file is never deleted, so a file is never lost.
+async function pushLocalFiles(token) {
+  const churchId = db.syncMeta.get('church_id');
+  let processed = 0;
+  for (const entity of SYNC_ENTITIES) {
+    const model = MODEL_OF[entity];
+    const fields = db.FILE_FIELDS[model];
+    if (!fields) continue;
+    const rows = db.rowsWithLocalFile(model, fields);
+    for (const row of rows) {
+      for (const field of fields) {
+        if (processed >= 50) return; // bound per-cycle work
+        const lp = localPathFromUrl(row[field]);
+        if (!lp || !fs.existsSync(lp)) continue;
+        const url = await uploadLocalFile(token, lp, churchId);
+        if (url) {
+          db.rewriteFileField(model, row.id, field, url);
+          try { cacheLocalAs(url, lp); } catch {}
+          processed += 1;
+        }
+      }
+    }
+  }
+}
+
+// Prefetch a pulled Blob URL into the local cache so it renders offline. Bounded,
+// best-effort; never throws into the sync cycle.
+async function prefetchUrl(url) {
+  const dest = path.join(userData(), 'media-cache', cacheKey(url));
+  if (fs.existsSync(dest)) return;
+  try {
+    const h = await fetch(url, { method: 'HEAD' });
+    const len = parseInt(h.headers.get('content-length') || '0', 10);
+    if (len && len > PREFETCH_MAX) return; // large: fetched on demand by the proxy instead
+    const r = await fetch(url);
+    if (!r.ok) return;
+    const buf = Buffer.from(await r.arrayBuffer());
+    const tmp = dest + '.part';
+    fs.writeFileSync(tmp, buf);
+    fs.renameSync(tmp, dest);
+    try { fs.writeFileSync(dest + '.meta', JSON.stringify({ contentType: r.headers.get('content-type') || 'application/octet-stream', size: buf.length, url })); } catch {}
+  } catch { /* offline / failed -> proxy fetches on demand later */ }
+}
+async function runPrefetch(urls) {
+  const list = [...new Set(urls)];
+  for (let i = 0; i < list.length; i += 2) {
+    await Promise.all(list.slice(i, i + 2).map(prefetchUrl));
+  }
+}
+
 async function runSync({ reason } = {}) {
   if (_running) return { skipped: true };
   if (!isEnabled()) { reportStatus({ state: 'disabled' }); return { disabled: true }; }
@@ -202,6 +319,9 @@ async function runSync({ reason } = {}) {
       }
     }
 
+    // ── PHASE 0: upload local file bytes to Blob, rewrite fields to canonical URLs ──
+    await pushLocalFiles(token);
+
     // ── PUSH delta (local -> cloud) ──
     const pushCursor = db.syncMeta.get('push_cursor') || null;
     const newFailures = [];
@@ -231,7 +351,9 @@ async function runSync({ reason } = {}) {
     // ── PULL (cloud -> local) ──
     const pullCursor = db.syncMeta.get('pull_cursor') || null;
     let firstServerTime = null; // DB clock at pull start -> safe next pull watermark
+    const prefetchUrls = [];
     for (const entity of SYNC_ENTITIES) {
+      const ff = db.FILE_FIELDS[MODEL_OF[entity]];
       let cursor = null;
       for (;;) {
         const { status, json } = await cloudPost(token, { op: 'pull', entity, since: pullCursor, cursor, limit: PULL_LIMIT });
@@ -241,6 +363,7 @@ async function runSync({ reason } = {}) {
         const rows = json.rows || [];
         if (rows.length) {
           db.runInTransaction(() => { for (const r of rows) db.upsertRemoteRow(MODEL_OF[entity], r); });
+          if (ff) for (const r of rows) for (const f of ff) { const v = r[f]; if (typeof v === 'string' && BLOB_URL_RE.test(v)) prefetchUrls.push(v); }
         }
         if (json.hasMore && json.nextCursor) cursor = json.nextCursor;
         else break;
@@ -251,6 +374,7 @@ async function runSync({ reason } = {}) {
       const watermark = isNaN(base) ? firstServerTime : new Date(base - PULL_OVERLAP_MS).toISOString();
       db.syncMeta.set('pull_cursor', watermark);
     }
+    if (prefetchUrls.length) runPrefetch(prefetchUrls); // fire-and-forget: cache pulled media for offline
 
     const at = new Date().toISOString();
     db.syncMeta.set('last_sync_at', at);

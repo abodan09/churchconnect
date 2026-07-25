@@ -603,6 +603,34 @@ function selectChangedSince(modelName, sinceIso, { limit = 200, cursor = null } 
   return getDb().prepare(sql).all(...params).map((r) => convertRow(tableName, r));
 }
 
+// File-URL columns per model (used by file sync + the media-proxy rewrite).
+// churchSettings.logo_url is handled locally only (not in the sync set).
+const FILE_FIELDS = {
+  member: ['profile_photo_url'],
+  sermon: ['file_url', 'thumbnail_url'],
+  property: ['photo_url'],
+  expenditure: ['receipt_url'],
+  churchSettings: ['logo_url'],
+};
+
+// Rows whose file field(s) still point at a local (this-device) upload URL — the
+// desktop→cloud file push finds these, uploads the bytes to Blob, and rewrites.
+function rowsWithLocalFile(modelName, fields) {
+  const tableName = TABLE_MAP[modelName];
+  if (!tableName || !fields?.length) return [];
+  const conds = fields.map((f) => `("${f}" LIKE 'http://localhost:%' OR "${f}" LIKE 'http://127.0.0.1:%')`).join(' OR ');
+  return getDb().prepare(`SELECT * FROM "${tableName}" WHERE ${conds}`).all().map((r) => convertRow(tableName, r));
+}
+
+// Rewrite a single file field to the canonical Blob URL. Bumps updatedAt so the
+// row re-pushes once carrying the portable URL (then it no longer matches
+// rowsWithLocalFile, so it won't loop).
+function rewriteFileField(modelName, id, field, url) {
+  const tableName = TABLE_MAP[modelName];
+  if (!tableName) return;
+  getDb().prepare(`UPDATE "${tableName}" SET "${field}" = ?, updatedAt = ? WHERE id = ?`).run(url, new Date().toISOString(), id);
+}
+
 // Local rows by id (used to re-push rows the cloud previously rejected — the
 // sync dead-letter/retry set). Booleans are converted back to true/false.
 function selectByIds(modelName, ids) {
@@ -644,4 +672,4 @@ function upsertRemoteRow(modelName, remoteRow) {
   return info.changes > 0;
 }
 
-module.exports = { initDb, getDb, createPrismaClient, localUsers, runInTransaction, syncMeta, deadLetter, localColumns, selectChangedSince, selectByIds, upsertRemoteRow };
+module.exports = { initDb, getDb, createPrismaClient, localUsers, runInTransaction, syncMeta, deadLetter, localColumns, selectChangedSince, selectByIds, upsertRemoteRow, FILE_FIELDS, rowsWithLocalFile, rewriteFileField };

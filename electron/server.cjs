@@ -3,7 +3,75 @@ const express = require('express');
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
-const { createPrismaClient, localUsers } = require('./db.cjs');
+const { createPrismaClient, localUsers, FILE_FIELDS } = require('./db.cjs');
+
+const BLOB_HOST = /(^|\.)blob\.vercel-storage\.com$/;   // only proxy Vercel Blob
+const MEDIA_STREAM_THROUGH = 100 * 1024 * 1024;         // don't cache files bigger than this
+let mediaCacheDir = null;
+
+const CT_BY_EXT = { '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.gif': 'image/gif', '.webp': 'image/webp', '.svg': 'image/svg+xml', '.mp3': 'audio/mpeg', '.m4a': 'audio/mp4', '.wav': 'audio/wav', '.ogg': 'audio/ogg', '.mp4': 'video/mp4', '.webm': 'video/webm', '.mov': 'video/quicktime', '.pdf': 'application/pdf' };
+function ctFromUrl(u) {
+  try { const p = new URL(u).pathname; return CT_BY_EXT[p.slice(p.lastIndexOf('.')).toLowerCase()]; } catch { return undefined; }
+}
+
+// Rewrite a record's canonical Blob URLs to the local media proxy so they render
+// offline. Only touches remote Blob URLs — local /uploads and data: URLs pass through.
+function rewriteMediaUrls(model, records) {
+  const fields = FILE_FIELDS[model];
+  if (!fields || !records) return records;
+  const arr = Array.isArray(records) ? records : [records];
+  for (const r of arr) {
+    if (!r) continue;
+    for (const f of fields) {
+      const v = r[f];
+      if (typeof v === 'string' && BLOB_HOST.test((() => { try { return new URL(v).hostname; } catch { return ''; } })())) {
+        r[f] = `http://localhost:${LOCAL_PORT}/media?u=${encodeURIComponent(v)}`;
+      }
+    }
+  }
+  return records;
+}
+
+// Inverse of rewriteMediaUrls: when a record is written back (e.g. the user edits
+// a sermon whose form still holds the proxy URL), restore the canonical Blob URL
+// so stored/synced values never get polluted with a device-local proxy URL.
+function unrewriteMediaUrls(model, data) {
+  const fields = FILE_FIELDS[model];
+  if (!fields || !data) return data;
+  for (const f of fields) {
+    const v = data[f];
+    if (typeof v === 'string') {
+      const m = v.match(/^https?:\/\/(?:localhost|127\.0\.0\.1):\d+\/media\?u=(.+)$/);
+      if (m) { try { data[f] = decodeURIComponent(m[1]); } catch { /* leave as-is */ } }
+    }
+  }
+  return data;
+}
+
+function serveCachedFile(req, res, filePath, contentType) {
+  const stat = fs.statSync(filePath);
+  const range = req.headers.range;
+  const ct = contentType || 'application/octet-stream';
+  if (range) {
+    const m = /bytes=(\d*)-(\d*)/.exec(range) || [];
+    let start, end;
+    if (m[1] === '' && m[2]) {           // suffix range "bytes=-N" = last N bytes
+      start = Math.max(0, stat.size - parseInt(m[2], 10));
+      end = stat.size - 1;
+    } else {
+      start = m[1] ? parseInt(m[1], 10) : 0;
+      end = m[2] ? parseInt(m[2], 10) : stat.size - 1;
+    }
+    if (isNaN(start)) start = 0;
+    if (isNaN(end) || end >= stat.size) end = stat.size - 1;
+    if (start > end) { res.status(416).set('Content-Range', `bytes */${stat.size}`).end(); return; }
+    res.status(206).set({ 'Content-Range': `bytes ${start}-${end}/${stat.size}`, 'Accept-Ranges': 'bytes', 'Content-Length': end - start + 1, 'Content-Type': ct });
+    fs.createReadStream(filePath, { start, end }).pipe(res);
+  } else {
+    res.status(200).set({ 'Content-Length': stat.size, 'Content-Type': ct, 'Accept-Ranges': 'bytes' });
+    fs.createReadStream(filePath).pipe(res);
+  }
+}
 const { hashPassword, verifyPassword, signToken, authMiddleware, requireRole } = require('./auth.cjs');
 
 const ROLE_SET = ['super_admin', 'pastor_admin', 'finance_officer', 'department_head', 'data_entry_staff', 'member'];
@@ -45,6 +113,8 @@ let uploadsDir = null;
 function createServer(userDataPath) {
   uploadsDir = path.join(userDataPath, 'uploads');
   if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
+  mediaCacheDir = path.join(userDataPath, 'media-cache');
+  if (!fs.existsSync(mediaCacheDir)) fs.mkdirSync(mediaCacheDir, { recursive: true });
 
   _prisma = createPrismaClient();
   const app = express();
@@ -71,6 +141,49 @@ function createServer(userDataPath) {
 
   // Serve uploaded files
   app.use('/uploads', express.static(uploadsDir));
+
+  // ── Media proxy: serve cloud Blob files from a local cache so they render
+  // OFFLINE. Fetches + caches on first access when online; supports Range for
+  // audio/video seeking. Only proxies Vercel Blob hosts (SSRF guard).
+  app.get('/media', async (req, res) => {
+    const u = req.query.u;
+    if (!u) return res.status(400).end();
+    let parsed;
+    try { parsed = new URL(u); } catch { return res.status(400).end(); }
+    if (parsed.protocol !== 'https:' || !BLOB_HOST.test(parsed.hostname)) return res.status(400).end();
+
+    const key = crypto.createHash('sha256').update(u).digest('hex');
+    const cachePath = path.join(mediaCacheDir, key);
+    const metaPath = `${cachePath}.meta`;
+    if (fs.existsSync(cachePath)) {
+      let ct; try { ct = JSON.parse(fs.readFileSync(metaPath, 'utf8')).contentType; } catch {}
+      return serveCachedFile(req, res, cachePath, ct || ctFromUrl(u));
+    }
+    // Cache miss — fetch from Blob (online only).
+    try {
+      const upstream = await fetch(u);
+      if (!upstream.ok || !upstream.body) return res.status(upstream.status || 502).end();
+      const ct = upstream.headers.get('content-type') || ctFromUrl(u) || 'application/octet-stream';
+      const len = parseInt(upstream.headers.get('content-length') || '0', 10);
+      const { Readable } = require('stream');
+      // Stream straight through (no cache) when too big OR when length is unknown,
+      // to avoid buffering an arbitrarily large body into memory.
+      if (!len || len > MEDIA_STREAM_THROUGH) {
+        const headers = { 'Content-Type': ct, 'Accept-Ranges': 'none' };
+        if (len) headers['Content-Length'] = len;
+        res.status(200).set(headers);
+        return Readable.fromWeb(upstream.body).pipe(res);
+      }
+      const buf = Buffer.from(await upstream.arrayBuffer());
+      const tmp = `${cachePath}.part`;
+      fs.writeFileSync(tmp, buf);
+      fs.renameSync(tmp, cachePath); // atomic — a crash never leaves a half file that looks whole
+      try { fs.writeFileSync(metaPath, JSON.stringify({ contentType: ct, size: buf.length, url: u })); } catch {}
+      return serveCachedFile(req, res, cachePath, ct);
+    } catch {
+      return res.status(504).end(); // offline / fetch failed → broken-media icon
+    }
+  });
 
   // ── Auth routes ──────────────────────────────────────────────────────────────
 
@@ -311,17 +424,17 @@ function createServer(userDataPath) {
           else where[k] = val;
         }
         const records = db.findMany({ where: Object.keys(where).length ? where : undefined, orderBy, take });
-        return res.json(records);
+        return res.json(rewriteMediaUrls(model, records));
       }
 
       if (req.method === 'GET' && id) {
         const record = db.findUnique({ where: { id } });
         if (!record) return res.status(404).json({ error: 'Not found' });
-        return res.json(record);
+        return res.json(rewriteMediaUrls(model, record));
       }
 
       if (req.method === 'POST') {
-        const data = { ...req.body };
+        const data = unrewriteMediaUrls(model, { ...req.body });
         if (req.localUser?.sub && MODELS_WITH_CREATOR.includes(model)) data.created_by_id = req.localUser.sub;
         Object.keys(data).forEach(k => (data[k] === undefined || data[k] === null) && delete data[k]);
         const record = db.create({ data });
@@ -329,7 +442,7 @@ function createServer(userDataPath) {
       }
 
       if ((req.method === 'PUT' || req.method === 'PATCH') && id) {
-        const data = { ...req.body };
+        const data = unrewriteMediaUrls(model, { ...req.body });
         delete data.id; delete data.createdAt; delete data.updatedAt; delete data.created_date;
         const record = db.update({ where: { id }, data });
         return res.json(record);
