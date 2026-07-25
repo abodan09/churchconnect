@@ -1,5 +1,17 @@
 [
   {
+    "version": "1.10.0",
+    "date": "2026-07-25",
+    "title": "Movable AI Assistant + Update Preview",
+    "features": [
+      "The AI assistant is now movable — drag its button (or the chat window's header) anywhere on screen, and it remembers where you put it",
+      "Before a software update installs, you'll now see exactly what's new and can choose to update or cancel — clicking Update downloads and installs it in one step"
+    ],
+    "fixes": [
+      "The chat button and window always stay fully on screen, even after resizing the window"
+    ]
+  },
+  {
     "version": "1.9.0",
     "date": "2026-07-25",
     "title": "Sermon Media on Cloud Storage + Private Receipts",
