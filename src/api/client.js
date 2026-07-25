@@ -134,6 +134,75 @@ export async function uploadFile(file, churchId) {
   return res.json(); // { file_url }
 }
 
+// ── Cloudflare R2 uploads (sermons → public bucket, receipts → private bucket) ──
+// Logos + member/property photos keep using uploadFile (Vercel Blob). These two
+// route to R2 via a presigned PUT the cloud mints (bytes go straight to R2, never
+// through the 4.5 MB function). On the desktop we stage to the local Express server
+// first (works offline); the sync push later moves the bytes to R2.
+const R2_EXT_CT = { '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.gif': 'image/gif', '.webp': 'image/webp', '.heic': 'image/heic', '.heif': 'image/heif', '.pdf': 'application/pdf', '.mp3': 'audio/mpeg', '.m4a': 'audio/mp4', '.aac': 'audio/aac', '.wav': 'audio/wav', '.ogg': 'audio/ogg', '.mp4': 'video/mp4', '.webm': 'video/webm', '.mov': 'video/quicktime', '.mkv': 'video/x-matroska' };
+function fileType(file) {
+  if (file?.type) return file.type;
+  const m = String(file?.name || '').match(/\.[a-z0-9]+$/i);
+  return (m && R2_EXT_CT[m[0].toLowerCase()]) || 'application/octet-stream';
+}
+async function stageLocal(file, nameOverride) {
+  const res = await fetch(`${getApiBase()}/api/upload`, {
+    method: 'POST',
+    headers: { 'Content-Type': file.type || fileType(file), 'X-Filename': nameOverride || file.name, ...(await getAuthHeader()) },
+    body: file,
+  });
+  if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || 'Upload failed'); }
+  return res.json(); // { file_url } — a local http://localhost/uploads/... URL
+}
+async function r2Put(kind, file) {
+  const ct = fileType(file);
+  const { uploadUrl, contentType, fileUrl, key } = await request('POST', '/api/r2-presign', { kind, filename: file.name, contentType: ct, size: file.size });
+  const put = await fetch(uploadUrl, { method: 'PUT', body: file, headers: { 'Content-Type': contentType || ct } });
+  if (!put.ok) throw new Error(`Upload failed (${put.status})`);
+  return { fileUrl, key };
+}
+
+// Sermon media → public R2. Returns { file_url } (contract preserved).
+export async function uploadSermonMedia(file) {
+  if (IS_EL) return { file_url: (await stageLocal(file)).file_url };
+  const { fileUrl } = await r2Put('sermon', file);
+  return { file_url: fileUrl };
+}
+
+// Receipt → private R2. Web returns { receipt_key }. Desktop stages locally under an
+// UNGUESSABLE name (the /uploads dir is loopback-served without auth) and returns
+// { receipt_staging_url }; the sync push moves the bytes to private R2 and mints the key.
+export async function uploadReceipt(file) {
+  if (IS_EL) {
+    const ext = (String(file.name || '').match(/\.[a-z0-9]+$/i) || [''])[0].toLowerCase();
+    return { receipt_staging_url: (await stageLocal(file, `receipt-${crypto.randomUUID()}${ext}`)).file_url };
+  }
+  const { key } = await r2Put('receipt', file);
+  return { receipt_key: key };
+}
+
+// Resolve a viewable URL for a receipt row (finance-gated on the server).
+//  - a local staging URL (offline, just uploaded) → return it directly
+//  - an R2 key → web: a 90s single-use signed GET (navigated to directly — no
+//    cross-origin blob fetch, so no CORS/leak); desktop: a per-user grant → /api/receipt
+//  - a legacy free-text receipt_url → return it directly
+export async function getReceiptUrl(row) {
+  const stagingUrl = typeof row?.receipt_url === 'string' && /^https?:\/\/(?:localhost|127\.0\.0\.1):\d+\/uploads\//.test(row.receipt_url) ? row.receipt_url : null;
+  if (IS_EL) {
+    if (stagingUrl) return stagingUrl;
+    if (row?.receipt_key) {
+      const { url } = await request('POST', '/api/receipt-grant', { key: row.receipt_key });
+      return `${getApiBase()}${url}`;
+    }
+    return row?.receipt_url || null; // legacy pasted link
+  }
+  if (row?.receipt_key) {
+    const { url } = await request('POST', '/api/media/sign', { key: row.receipt_key });
+    return url;
+  }
+  return row?.receipt_url || null; // legacy pasted link
+}
+
 // Email — replaces base44.integrations.Core.SendEmail
 export async function sendEmail({ to, subject, body, from_name }) {
   return request('POST', '/api/send-email', { to, subject, body, from_name });

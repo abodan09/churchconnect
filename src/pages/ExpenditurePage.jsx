@@ -1,16 +1,21 @@
 import { useState, useEffect } from "react";
-import { entities } from "@/api/client";
+import { entities, uploadReceipt, getReceiptUrl } from "@/api/client";
 import { useAuth } from "@/lib/ClerkAuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Plus, Search, Edit, Trash2, CheckCircle, XCircle } from "lucide-react";
+import { Plus, Search, Edit, Trash2, CheckCircle, XCircle, Paperclip, Eye } from "lucide-react";
 import StatCard from "@/components/StatCard";
 import { Receipt } from "lucide-react";
 
-const EMPTY = { date: "", category: "", description: "", amount: "", department_id: "", department_name: "", notes: "", receipt_url: "" };
+const EMPTY = { date: "", category: "", description: "", amount: "", department_id: "", department_name: "", notes: "", receipt_url: "", receipt_key: "" };
+const FINANCE_ROLES = ["finance_officer", "pastor_admin", "super_admin"];
+// Must match the cloud presign allowlist (api/r2-presign.js RECEIPT_TYPES + RECEIPT_MAX)
+// so an unsupported/oversize file is rejected here instead of silently failing to sync.
+const RECEIPT_MIME = new Set(["image/jpeg", "image/png", "image/webp", "image/gif", "image/heic", "image/heif", "application/pdf"]);
+const RECEIPT_MAX = 25 * 1024 * 1024;
 const CATS = ["utilities","salaries","maintenance","outreach","events","equipment","welfare","administration","other"];
 const STATUS_COLOR = { pending: "bg-amber-100 text-amber-700", approved: "bg-green-100 text-green-700", rejected: "bg-red-100 text-red-700" };
 
@@ -24,6 +29,10 @@ export default function ExpenditurePage() {
   const [form, setForm] = useState(EMPTY);
   const [editId, setEditId] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [uploading, setUploading] = useState(false);
+  const [receiptDirty, setReceiptDirty] = useState(false); // freshly uploaded, not yet saved
+
+  const canReceipts = FINANCE_ROLES.includes(user?.data?.role);
 
   useEffect(() => { loadData(); }, []);
 
@@ -32,8 +41,8 @@ export default function ExpenditurePage() {
     setExpenditures(e); setDepartments(d); setLoading(false);
   }
 
-  function openNew() { setForm(EMPTY); setEditId(null); setOpen(true); }
-  function openEdit(e) { setForm({ ...e, amount: String(e.amount) }); setEditId(e.id); setOpen(true); }
+  function openNew() { setForm(EMPTY); setEditId(null); setReceiptDirty(false); setOpen(true); }
+  function openEdit(e) { setForm({ ...e, amount: String(e.amount) }); setEditId(e.id); setReceiptDirty(false); setOpen(true); }
 
   async function handleSave() {
     const dept = departments.find(d => d.id === form.department_id);
@@ -53,6 +62,46 @@ export default function ExpenditurePage() {
     if (!["super_admin", "pastor_admin"].includes(user?.data?.role)) return;
     if (confirm("Delete this record?")) { await entities.Expenditure.delete(id); loadData(); }
   }
+
+  async function handleReceiptUpload(e) {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // allow re-selecting the same file after a rejection
+    if (!file) return;
+    // Validate up front so an unsupported/oversize file is never staged then silently
+    // dropped on sync (the cloud presign would 415/413 it).
+    const type = file.type || "";
+    if (!RECEIPT_MIME.has(type)) { alert("Unsupported file. Attach a photo (JPG/PNG/WEBP/GIF/HEIC) or a PDF."); return; }
+    if (file.size > RECEIPT_MAX) { alert("Receipt is too large (max 25 MB)."); return; }
+    setUploading(true);
+    try {
+      const r = await uploadReceipt(file);
+      // web → { receipt_key }; desktop → { receipt_staging_url } (key minted on sync)
+      setForm(p => ({ ...p, receipt_key: r.receipt_key || "", receipt_url: r.receipt_staging_url || "" }));
+      setReceiptDirty(true);
+    } catch (err) {
+      alert(err?.message || "Receipt upload failed. Please try again.");
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  async function handleViewReceipt(row) {
+    if (!canReceipts) return;
+    // Open the tab synchronously (inside the user gesture) so the async URL
+    // resolution below can't get the popup blocked, then navigate it. Can't pass
+    // "noopener" here (that returns null), so sever the opener manually instead.
+    const tab = window.open("", "_blank");
+    if (tab) tab.opener = null;
+    try {
+      const url = await getReceiptUrl(row);
+      if (!url) { if (tab) tab.close(); alert("No receipt attached."); return; }
+      if (tab) tab.location = url; else window.location.href = url;
+    } catch (err) {
+      if (tab) tab.close();
+      alert(err?.message || "Could not open the receipt.");
+    }
+  }
+  const hasReceipt = (r) => !!(r?.receipt_key || r?.receipt_url);
 
   const canApprove = ["super_admin","pastor_admin","department_head"].includes(user?.data?.role);
 
@@ -118,6 +167,7 @@ export default function ExpenditurePage() {
                         <Button variant="ghost" size="icon" title="Approve" onClick={()=>handleApprove(e.id,"approved")}><CheckCircle className="w-4 h-4 text-green-600" /></Button>
                         <Button variant="ghost" size="icon" title="Reject" onClick={()=>handleApprove(e.id,"rejected")}><XCircle className="w-4 h-4 text-destructive" /></Button>
                       </>}
+                      {canReceipts && hasReceipt(e) && <Button variant="ghost" size="icon" title="View receipt" onClick={()=>handleViewReceipt(e)}><Eye className="w-4 h-4 text-blue-600" /></Button>}
                       <Button variant="ghost" size="icon" onClick={()=>openEdit(e)}><Edit className="w-4 h-4" /></Button>
                       <Button variant="ghost" size="icon" onClick={()=>handleDelete(e.id)}><Trash2 className="w-4 h-4 text-destructive" /></Button>
                     </div>
@@ -149,7 +199,27 @@ export default function ExpenditurePage() {
                 <SelectContent>{departments.map(d=><SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>)}</SelectContent>
               </Select>
             </div>
-            <div className="col-span-2"><Label>Receipt URL</Label><Input value={form.receipt_url} onChange={e=>setForm(p=>({...p,receipt_url:e.target.value}))} className="mt-1" /></div>
+            <div className="col-span-2">
+              <Label>Receipt {!canReceipts && <span className="text-xs text-muted-foreground font-normal">(finance access only)</span>}</Label>
+              {canReceipts ? (
+                <div className="mt-1 flex items-center gap-2">
+                  <input id="receipt-file" type="file" accept="image/*,application/pdf" className="hidden" onChange={handleReceiptUpload} />
+                  <Button type="button" variant="outline" size="sm" className="gap-2" disabled={uploading} onClick={()=>document.getElementById("receipt-file")?.click()}>
+                    <Paperclip className="w-4 h-4" />{uploading ? "Uploading…" : (hasReceipt(form) ? "Replace receipt" : "Attach receipt")}
+                  </Button>
+                  {hasReceipt(form) && !receiptDirty && (
+                    <Button type="button" variant="ghost" size="sm" className="gap-2" onClick={()=>handleViewReceipt(form)}>
+                      <Eye className="w-4 h-4" />View
+                    </Button>
+                  )}
+                  {hasReceipt(form) && (
+                    <span className="text-xs text-green-600">{receiptDirty ? "attached — save to view" : "attached"}</span>
+                  )}
+                </div>
+              ) : (
+                <p className="mt-1 text-sm text-muted-foreground">{hasReceipt(form) ? "A receipt is attached." : "No receipt."}</p>
+              )}
+            </div>
             <div className="col-span-2"><Label>Notes</Label><Input value={form.notes} onChange={e=>setForm(p=>({...p,notes:e.target.value}))} className="mt-1" /></div>
           </div>
           <div className="flex justify-end gap-2 mt-4">

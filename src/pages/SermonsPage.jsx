@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { entities, uploadFile } from '@/api/client';
+import { entities, uploadSermonMedia } from '@/api/client';
 import { useAuth } from '@/lib/ClerkAuthContext';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -56,7 +56,7 @@ export default function SermonsPage() {
     if (!file) return;
     setUploading(true);
     try {
-      const { file_url } = await uploadFile(file, church_id);
+      const { file_url } = await uploadSermonMedia(file);
       setForm(p => ({ ...p, file_url }));
     } catch (err) {
       console.error('Sermon upload failed:', err);
