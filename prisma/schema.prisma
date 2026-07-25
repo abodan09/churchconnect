@@ -188,6 +188,7 @@ model Expenditure {
   approved_by     String?
   approved_date   String?
   receipt_url     String?
+  receipt_key     String?  // private R2 object key (never a URL); read via api/media/sign
   notes           String?
   created_by_id   String?
   createdAt       DateTime @default(now())
