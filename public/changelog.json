@@ -1,5 +1,18 @@
 [
   {
+    "version": "1.9.0",
+    "date": "2026-07-25",
+    "title": "Sermon Media on Cloud Storage + Private Receipts",
+    "features": [
+      "Sermon audio and video now upload to dedicated cloud storage with plenty of room for large recordings, and play back from a fast CDN — on the cloud and cached offline on the desktop",
+      "Attach a receipt (photo or PDF) directly to an expenditure. Receipts are stored privately and can only be viewed by finance roles (finance officer, pastor/admin, super admin) — no more pasting links"
+    ],
+    "fixes": [
+      "Receipt uploads are validated up front (type and size) so a receipt can never silently fail to sync",
+      "Uploading a receipt on the desktop while offline stages it locally and moves it to private storage on the next sync"
+    ]
+  },
+  {
     "version": "1.8.0",
     "date": "2026-07-25",
     "title": "Embed Sermon Videos & Sync Your Church Logo",
