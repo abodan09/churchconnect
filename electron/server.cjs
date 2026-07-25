@@ -239,6 +239,19 @@ function createServer(userDataPath) {
     }
   });
 
+  // Proxy the always-current cloud changelog (server-side fetch avoids the browser
+  // CORS block) so the update prompt can show what a not-yet-installed version adds.
+  app.get('/api/changelog', async (req, res) => {
+    try {
+      const r = await fetch('https://church.frozenbit.eu/changelog.json');
+      if (!r.ok) return res.status(502).json([]);
+      const data = await r.json();
+      return res.json(Array.isArray(data) ? data : []);
+    } catch {
+      return res.status(504).json([]);
+    }
+  });
+
   // ── Auth routes ──────────────────────────────────────────────────────────────
 
   app.get('/api/auth/status', (req, res) => {

@@ -114,7 +114,16 @@ run(
 );
 console.log(`✅ GitHub release v${newVersion} created`);
 
-// ── 6. Deploy landing site ───────────────────────────────────────────────────
+// ── 6. Deploy the web app (ships web-side changes + keeps church.frozenbit.eu/
+// changelog.json current, so the desktop update prompt shows this version's notes) ──
+try {
+  run('npx vercel --prod --yes');
+  console.log('✅ Web app redeployed (changelog current for the update prompt)');
+} catch {
+  console.warn('⚠️  Web app redeploy failed — the update prompt will fall back to GitHub release notes');
+}
+
+// ── 7. Deploy landing site ───────────────────────────────────────────────────
 if (fs.existsSync(LANDING)) {
   run('npx vercel --prod', { cwd: LANDING });
   console.log('✅ Landing site redeployed');

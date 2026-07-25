@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { formatDistanceToNow } from 'date-fns';
 import { useAutoUpdater } from '@/hooks/useAutoUpdater';
+import UpdatePromptModal from '@/components/UpdatePromptModal';
 import { Progress } from '@/components/ui/progress';
 import {
   RefreshCw, Download, CheckCircle2, AlertCircle, Loader2, Wifi, WifiOff,
@@ -19,6 +20,7 @@ export default function StatusBar() {
   const [creds, setCreds] = useState({ email: '', password: '' });
   const [enabling, setEnabling] = useState(false);
   const [enableErr, setEnableErr] = useState('');
+  const [showUpdatePrompt, setShowUpdatePrompt] = useState(false);
   const [, setTick] = useState(0); // periodic re-render for relative time
 
   useEffect(() => {
@@ -106,7 +108,7 @@ export default function StatusBar() {
     if (s === 'available') return (
       <span className="flex items-center gap-1.5">
         <Download className="w-3.5 h-3.5 text-primary" /> Update v{upd.updateInfo?.version} available
-        <button onClick={upd.handleDownload} className="text-primary hover:underline font-medium">Download</button>
+        <button onClick={() => setShowUpdatePrompt(true)} className="text-primary hover:underline font-medium">Update</button>
       </span>
     );
     if (s === 'downloading') return (
@@ -140,6 +142,15 @@ export default function StatusBar() {
 
   return (
     <>
+      {showUpdatePrompt && upd.state === 'available' && upd.updateInfo && (
+        <UpdatePromptModal
+          version={upd.updateInfo.version}
+          releaseNotes={upd.updateInfo.releaseNotes}
+          onCancel={() => setShowUpdatePrompt(false)}
+          onConfirm={() => { setShowUpdatePrompt(false); upd.handleUpdateNow(); }}
+        />
+      )}
+
       {showEnable && (
         <div className="fixed bottom-9 left-3 z-50 w-72 bg-white border border-border rounded-xl shadow-lg p-4 animate-in fade-in slide-in-from-bottom-2">
           <div className="flex items-center justify-between mb-2">

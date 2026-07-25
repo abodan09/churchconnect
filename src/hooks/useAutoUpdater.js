@@ -11,6 +11,7 @@ export function useAutoUpdater() {
   const [errorMsg, setErrorMsg] = useState('');
   const [version, setVersion] = useState('');
   const flow = useRef('auto');       // 'auto' | 'manual'
+  const autoInstall = useRef(false); // set when the user confirms the update prompt: install as soon as the download finishes
   const stateRef = useRef('idle');   // mirrors state for stale-closure event handlers
 
   useEffect(() => { stateRef.current = state; }, [state]);
@@ -28,11 +29,12 @@ export function useAutoUpdater() {
       window.electronAPI.onUpdateNotAvailable(() => setState(flow.current === 'manual' ? 'uptodate' : 'idle')),
       window.electronAPI.onDownloadProgress((p) => { setState('downloading'); setProgress(p.percent); }),
       window.electronAPI.onUpdateDownloaded(() => {
-        if (flow.current === 'manual') { setState('installing'); window.electronAPI.installUpdate(); }
+        if (flow.current === 'manual' || autoInstall.current) { setState('installing'); window.electronAPI.installUpdate(); }
         else setState('downloaded');
       }),
       window.electronAPI.onUpdateError((msg) => {
         setErrorMsg(msg);
+        autoInstall.current = false;
         const engaged = flow.current === 'manual' || stateRef.current === 'downloading' || stateRef.current === 'installing';
         if (engaged) setState('error');
         else { setState('idle'); flow.current = 'auto'; }
@@ -58,6 +60,8 @@ export function useAutoUpdater() {
   function startManualCheck() { flow.current = 'manual'; setState('checking'); window.electronAPI?.checkForUpdates(); }
   function handleDownload() { setProgress(0); setState('downloading'); window.electronAPI?.downloadUpdate(); }
   function handleInstall() { setState('installing'); window.electronAPI?.installUpdate(); }
+  // User confirmed the changelog prompt: download now and install the moment it finishes.
+  function handleUpdateNow() { autoInstall.current = true; setProgress(0); setState('downloading'); window.electronAPI?.downloadUpdate(); }
 
-  return { state, updateInfo, progress, errorMsg, version, startManualCheck, handleDownload, handleInstall };
+  return { state, updateInfo, progress, errorMsg, version, startManualCheck, handleDownload, handleInstall, handleUpdateNow };
 }
