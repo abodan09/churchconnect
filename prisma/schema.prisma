@@ -284,6 +284,9 @@ model ChurchSettings {
   theme_tertiary  String?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
+  serverUpdatedAt DateTime @default(now())
+
+  @@index([church_id, serverUpdatedAt])
 }
 
 // ── Access Requests ───────────────────────────────────────────────────────────

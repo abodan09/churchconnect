@@ -27,7 +27,7 @@ const DATE_COLS = new Set(['createdAt', 'updatedAt']);
 // meaningless in the cloud, so we store NULL rather than propagate a dead URL
 // that every other viewer would try (and fail) to load. The desktop re-pushes
 // the canonical Blob URL once the file has uploaded.
-const FILE_URL_COLS = new Set(['profile_photo_url', 'file_url', 'thumbnail_url', 'photo_url', 'receipt_url']);
+const FILE_URL_COLS = new Set(['profile_photo_url', 'file_url', 'thumbnail_url', 'photo_url', 'receipt_url', 'logo_url']);
 const LOCAL_URL_RE = /^https?:\/\/(?:localhost|127\.0\.0\.1)[:/]/i;
 
 // Cloud columns that are NOT NULL with a default but are nullable locally. If the
@@ -46,6 +46,7 @@ const NOT_NULL_DEFAULTS = {
   pastoralcares: { type: 'prayer_request', status: 'open', priority: 'normal', is_private: false },
   volunteers: { status: 'pending', checked_in: false },
   announcements: { audience: 'all', is_pinned: false, priority: 'normal', is_active: true },
+  churchsettings: { language: 'en', currency_code: 'EUR', currency_symbol: '€' },
 };
 
 // Static per-entity column lists — NEVER derived from the request, so the raw
@@ -70,9 +71,12 @@ const SYNC_ENTITIES = {
   pastoralcares: { model: 'pastoralCare', table: 'PastoralCare', cols: ['id', 'church_id', 'member_id', 'member_name', 'type', 'date', 'description', 'status', 'priority', 'assigned_to', 'assigned_name', 'resolved_date', 'resolution_notes', 'is_private', 'submitted_by', 'created_by_id', 'createdAt', 'updatedAt'] },
   volunteers: { model: 'volunteer', table: 'Volunteer', cols: ['id', 'church_id', 'member_id', 'member_name', 'event_id', 'event_name', 'event_date', 'department_id', 'department_name', 'role', 'status', 'notes', 'checked_in', 'created_by_id', 'createdAt', 'updatedAt'] },
   announcements: { model: 'announcement', table: 'Announcement', cols: ['id', 'church_id', 'title', 'content', 'audience', 'department_id', 'department_name', 'published_by', 'publish_date', 'expiry_date', 'is_pinned', 'priority', 'is_active', 'created_by_id', 'createdAt', 'updatedAt'] },
+  // Per-church singleton (church_id @unique) — upsert keyed on church_id so two
+  // devices' rows (different ids) converge to one cloud row instead of colliding.
+  churchsettings: { model: 'churchSettings', table: 'ChurchSettings', conflict: 'church_id', cols: ['id', 'church_id', 'church_name', 'logo_url', 'language', 'currency_code', 'currency_symbol', 'theme_primary', 'theme_secondary', 'theme_tertiary', 'createdAt', 'updatedAt'] },
 };
 
-function buildUpsertSql(table, cols) {
+function buildUpsertSql(table, cols, conflictCol = 'id') {
   const colList = cols.map((c) => `"${c}"`).join(', ');
   const ph = cols.map((_, i) => `$${i + 1}`).join(', ');
   const setCols = cols.filter((c) => c !== 'id' && c !== 'church_id' && c !== 'createdAt');
@@ -80,7 +84,7 @@ function buildUpsertSql(table, cols) {
   const churchParam = `$${cols.length + 1}`;
   return (
     `INSERT INTO "${table}" (${colList}) VALUES (${ph}) ` +
-    `ON CONFLICT ("id") DO UPDATE SET ${setClause} ` +
+    `ON CONFLICT ("${conflictCol}") DO UPDATE SET ${setClause} ` +
     `WHERE "${table}"."church_id" = ${churchParam} AND "${table}"."updatedAt" < EXCLUDED."updatedAt"`
   );
 }
@@ -123,7 +127,7 @@ export default async function handler(req, res) {
       for (const [resource, rows] of Object.entries(changes)) {
         const ent = SYNC_ENTITIES[resource];
         if (!ent || !Array.isArray(rows)) continue;
-        const sql = buildUpsertSql(ent.table, ent.cols);
+        const sql = buildUpsertSql(ent.table, ent.cols, ent.conflict);
         const defaults = NOT_NULL_DEFAULTS[resource];
         let n = 0;
         const fails = [];

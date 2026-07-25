@@ -21,8 +21,10 @@ const db = require('./db.cjs');
 //       a backdated updatedAt is still delivered here. The watermark is the DB
 //       clock minus a small overlap; re-pulled rows are idempotent no-ops (LWW).
 
-const SYNC_ENTITIES = ['members', 'memberrelationships', 'departments', 'events', 'givings', 'expenditures', 'attendances', 'sermons', 'properties', 'smallgroups', 'smallgroupmembers', 'pastoralcares', 'volunteers', 'announcements'];
-const MODEL_OF = { members: 'member', memberrelationships: 'memberRelationship', departments: 'department', events: 'event', givings: 'giving', expenditures: 'expenditure', attendances: 'attendance', sermons: 'sermon', properties: 'property', smallgroups: 'smallGroup', smallgroupmembers: 'smallGroupMember', pastoralcares: 'pastoralCare', volunteers: 'volunteer', announcements: 'announcement' };
+const SYNC_ENTITIES = ['members', 'memberrelationships', 'departments', 'events', 'givings', 'expenditures', 'attendances', 'sermons', 'properties', 'smallgroups', 'smallgroupmembers', 'pastoralcares', 'volunteers', 'announcements', 'churchsettings'];
+const MODEL_OF = { members: 'member', memberrelationships: 'memberRelationship', departments: 'department', events: 'event', givings: 'giving', expenditures: 'expenditure', attendances: 'attendance', sermons: 'sermon', properties: 'property', smallgroups: 'smallGroup', smallgroupmembers: 'smallGroupMember', pastoralcares: 'pastoralCare', volunteers: 'volunteer', announcements: 'announcement', churchsettings: 'churchSettings' };
+// Per-church singleton tables merge into their single local row on pull.
+const SINGLETON_MODELS = new Set(['churchSettings']);
 
 const PUSH_LIMIT = 200;
 const PULL_LIMIT = 300;
@@ -326,9 +328,14 @@ async function runSync({ reason } = {}) {
     const pushCursor = db.syncMeta.get('push_cursor') || null;
     const newFailures = [];
     for (const entity of SYNC_ENTITIES) {
+      // Singletons are a single row: always re-evaluate them (ignore the global
+      // watermark) so a logo set on this device BEFORE churchsettings became a
+      // synced entity still pushes up. Cloud LWW makes the re-push idempotent
+      // (equal updatedAt -> no update -> serverUpdatedAt unchanged -> no ping-pong).
+      const sinceCursor = SINGLETON_MODELS.has(MODEL_OF[entity]) ? null : pushCursor;
       let cursor = null;
       for (;;) {
-        const rows = db.selectChangedSince(MODEL_OF[entity], pushCursor, { limit: PUSH_LIMIT, cursor });
+        const rows = db.selectChangedSince(MODEL_OF[entity], sinceCursor, { limit: PUSH_LIMIT, cursor });
         if (!rows.length) break;
         const { status, json } = await cloudPost(token, { op: 'push', changes: { [entity]: rows } });
         if (status === 401) throw Object.assign(new Error('auth'), { kind: 'auth' });
@@ -362,7 +369,8 @@ async function runSync({ reason } = {}) {
         if (firstServerTime === null) firstServerTime = json.serverTime || null;
         const rows = json.rows || [];
         if (rows.length) {
-          db.runInTransaction(() => { for (const r of rows) db.upsertRemoteRow(MODEL_OF[entity], r); });
+          const applyFn = SINGLETON_MODELS.has(MODEL_OF[entity]) ? db.upsertSingleton : db.upsertRemoteRow;
+          db.runInTransaction(() => { for (const r of rows) applyFn(MODEL_OF[entity], r); });
           if (ff) for (const r of rows) for (const f of ff) { const v = r[f]; if (typeof v === 'string' && BLOB_URL_RE.test(v)) prefetchUrls.push(v); }
         }
         if (json.hasMore && json.nextCursor) cursor = json.nextCursor;

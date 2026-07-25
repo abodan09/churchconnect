@@ -373,11 +373,14 @@ function createServer(userDataPath) {
         ...(theme_tertiary !== undefined && { theme_tertiary: theme_tertiary || null }),
       };
 
+      // Restore a canonical Blob URL if the logo came back as a proxy URL, so the
+      // stored/synced value stays portable (mirrors the entities write path).
+      unrewriteMediaUrls('churchSettings', data);
       const record = existing
         ? _prisma.churchSettings.update({ where: { id: existing.id }, data })
         : _prisma.churchSettings.create({ data });
 
-      return res.json(record);
+      return res.json(rewriteMediaUrls('churchSettings', record));
     } catch (err) {
       console.error('[settings/update]', err.message);
       return res.status(500).json({ error: err.message });

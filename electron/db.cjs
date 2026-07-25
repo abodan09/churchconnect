@@ -604,7 +604,7 @@ function selectChangedSince(modelName, sinceIso, { limit = 200, cursor = null } 
 }
 
 // File-URL columns per model (used by file sync + the media-proxy rewrite).
-// churchSettings.logo_url is handled locally only (not in the sync set).
+// churchSettings.logo_url syncs cross-device via the singleton path.
 const FILE_FIELDS = {
   member: ['profile_photo_url'],
   sermon: ['file_url', 'thumbnail_url'],
@@ -672,4 +672,33 @@ function upsertRemoteRow(modelName, remoteRow) {
   return info.changes > 0;
 }
 
-module.exports = { initDb, getDb, createPrismaClient, localUsers, runInTransaction, syncMeta, deadLetter, localColumns, selectChangedSince, selectByIds, upsertRemoteRow, FILE_FIELDS, rowsWithLocalFile, rewriteFileField };
+// Apply a pulled row into a per-church SINGLETON table (church_settings): merge
+// into the ONE existing local row (last-write-wins by updatedAt) instead of
+// keying on id — the cloud and this device hold different ids for the same
+// church, so an id-keyed upsert would create a duplicate. Cloud-only columns
+// (church_id, serverUpdatedAt) are stripped via the local-columns allowlist.
+function upsertSingleton(modelName, remoteRow) {
+  const tableName = TABLE_MAP[modelName];
+  if (!tableName || !remoteRow) return false;
+  const allow = new Set(localColumns(tableName));
+  const prepared = prepareData(tableName, remoteRow);
+  const data = {};
+  for (const [k, v] of Object.entries(prepared)) if (allow.has(k)) data[k] = v === undefined ? null : v;
+
+  const existing = getDb().prepare(`SELECT * FROM "${tableName}" LIMIT 1`).get();
+  if (existing) {
+    // LWW: only apply a strictly-newer remote row (ISO strings compare chronologically).
+    if (!(remoteRow.updatedAt && (!existing.updatedAt || remoteRow.updatedAt > existing.updatedAt))) return false;
+    const setCols = Object.keys(data).filter((c) => c !== 'id' && c !== 'createdAt');
+    if (!setCols.length) return false;
+    const setClause = setCols.map((c) => `"${c}" = ?`).join(', ');
+    getDb().prepare(`UPDATE "${tableName}" SET ${setClause} WHERE id = ?`).run(...setCols.map((c) => data[c]), existing.id);
+    return true;
+  }
+  if (!data.id) data.id = randomUUID();
+  const cols = Object.keys(data);
+  getDb().prepare(`INSERT INTO "${tableName}" (${cols.map((c) => `"${c}"`).join(', ')}) VALUES (${cols.map(() => '?').join(', ')})`).run(...cols.map((c) => data[c]));
+  return true;
+}
+
+module.exports = { initDb, getDb, createPrismaClient, localUsers, runInTransaction, syncMeta, deadLetter, localColumns, selectChangedSince, selectByIds, upsertRemoteRow, upsertSingleton, FILE_FIELDS, rowsWithLocalFile, rewriteFileField };
