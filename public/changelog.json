@@ -1,5 +1,17 @@
 [
   {
+    "version": "1.8.0",
+    "date": "2026-07-25",
+    "title": "Embed Sermon Videos & Sync Your Church Logo",
+    "features": [
+      "Add a sermon by pasting a YouTube, Vimeo or Facebook video link — it plays right on the sermon card, no upload needed. Uploading a file still works too.",
+      "Your church logo and settings now sync across every device and the cloud — set the logo once and it shows up everywhere"
+    ],
+    "fixes": [
+      "Adding sermon videos by link respects the same permissions as uploads — only enabled users in enabled departments can post media"
+    ]
+  },
+  {
     "version": "1.7.0",
     "date": "2026-07-25",
     "title": "Photos, Logos & Sermon Media Everywhere",
