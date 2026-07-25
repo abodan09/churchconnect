@@ -23,6 +23,12 @@ let _prisma = null;
 function getPrisma() { if (!_prisma) _prisma = new PrismaClient(); return _prisma; }
 
 const DATE_COLS = new Set(['createdAt', 'updatedAt']);
+// File-URL columns: a device-local (http://localhost.../uploads/...) value is
+// meaningless in the cloud, so we store NULL rather than propagate a dead URL
+// that every other viewer would try (and fail) to load. The desktop re-pushes
+// the canonical Blob URL once the file has uploaded.
+const FILE_URL_COLS = new Set(['profile_photo_url', 'file_url', 'thumbnail_url', 'photo_url', 'receipt_url']);
+const LOCAL_URL_RE = /^https?:\/\/(?:localhost|127\.0\.0\.1)[:/]/i;
 
 // Cloud columns that are NOT NULL with a default but are nullable locally. If the
 // client pushes a NULL we substitute the schema default so the INSERT never
@@ -87,6 +93,8 @@ function rowValues(row, cols, churchId, defaults) {
       if (defaults && Object.prototype.hasOwnProperty.call(defaults, c)) return defaults[c];
       return null;
     }
+    // Drop non-portable device-local file URLs — never store them in the cloud.
+    if (FILE_URL_COLS.has(c) && typeof v === 'string' && LOCAL_URL_RE.test(v)) return null;
     if (DATE_COLS.has(c)) { const d = new Date(v); return isNaN(d.getTime()) ? new Date() : d; }
     return v;
   });

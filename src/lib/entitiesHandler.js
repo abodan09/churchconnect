@@ -6,6 +6,11 @@
 import { verifyToken } from '@clerk/backend';
 import { PrismaClient } from '@prisma/client';
 
+// NOTE: blob cleanup on delete/replace is intentionally NOT done inline. Under
+// upsert-only LWW sync + a free-text receipt_url field, an inline del() can
+// delete a blob another record (or an offline device) still references. Orphaned
+// blobs are cheap; reclaiming them safely needs a reference-counted sweep (v2).
+
 let _prisma = null;
 function getPrisma() {
   if (!_prisma) _prisma = new PrismaClient();
