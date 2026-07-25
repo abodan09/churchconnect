@@ -30,6 +30,22 @@ function verifyToken(token) {
   }
 }
 
+// Short-lived capability ticket for reading ONE private receipt through the
+// unauthenticated /api/receipt route. Minted only after a finance-role check
+// (see /api/receipt-grant), so a <img>/window.open navigation — which can't carry
+// an Authorization header — still proves authorisation via the ?t= nonce.
+function signReceiptTicket(key) {
+  return jwt.sign({ purpose: 'receipt', key }, getSecret(), { expiresIn: '2m' });
+}
+function verifyReceiptTicket(token, key) {
+  try {
+    const p = jwt.verify(token, getSecret());
+    return p?.purpose === 'receipt' && p?.key === key;
+  } catch {
+    return false;
+  }
+}
+
 function authMiddleware(req, res, next) {
   const auth = req.headers.authorization;
   if (!auth?.startsWith('Bearer ')) {
@@ -60,4 +76,4 @@ function requireRole(...roles) {
   };
 }
 
-module.exports = { hashPassword, verifyPassword, signToken, verifyToken, authMiddleware, requireRole };
+module.exports = { hashPassword, verifyPassword, signToken, verifyToken, signReceiptTicket, verifyReceiptTicket, authMiddleware, requireRole };

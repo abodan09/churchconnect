@@ -175,6 +175,7 @@ CREATE TABLE IF NOT EXISTS expenditures (
   approved_by TEXT,
   approved_date TEXT,
   receipt_url TEXT,
+  receipt_key TEXT,
   notes TEXT,
   created_by_id TEXT,
   createdAt TEXT DEFAULT (datetime('now')),
@@ -372,6 +373,10 @@ function initDb(userDataPath) {
     try { _db.exec(`ALTER TABLE church_settings ADD COLUMN ${col} TEXT`); } catch { /* already exists */ }
   }
   try { _db.exec(`ALTER TABLE members ADD COLUMN address_history TEXT`); } catch { /* already exists */ }
+  // Private R2 receipt key. MUST be an explicit ALTER — the CREATE TABLE above is a
+  // no-op on existing installs, so without this a pulled receipt_key is dropped by
+  // the localColumns allowlist and any local write throws "no such column".
+  try { _db.exec(`ALTER TABLE expenditures ADD COLUMN receipt_key TEXT`); } catch { /* already exists */ }
   return _db;
 }
 
@@ -603,8 +608,25 @@ function selectChangedSince(modelName, sinceIso, { limit = 200, cursor = null } 
   return getDb().prepare(sql).all(...params).map((r) => convertRow(tableName, r));
 }
 
+// Exact, anchored hostname allowlist for the media proxy + prefetch (shared by
+// server.cjs and sync.cjs so they can't drift). Vercel Blob (logos/photos), R2
+// public sermon hosts (both the r2.dev testing host and the intended custom
+// domain — a switch must not orphan already-stored URLs), and NOTHING else. Never
+// a substring match; never r2.cloudflarestorage.com (that is the PRIVATE S3
+// endpoint that also fronts the receipts bucket).
+const MEDIA_HOST_PATTERNS = [
+  /(^|\.)blob\.vercel-storage\.com$/,
+  /(^|\.)r2\.dev$/,
+  /^media\.church\.frozenbit\.eu$/,
+];
+function isAllowedMediaHost(hostname) {
+  return typeof hostname === 'string' && MEDIA_HOST_PATTERNS.some((re) => re.test(hostname));
+}
+
 // File-URL columns per model (used by file sync + the media-proxy rewrite).
-// churchSettings.logo_url syncs cross-device via the singleton path.
+// churchSettings.logo_url syncs cross-device via the singleton path. expenditure
+// keeps receipt_url (the transient local staging URL) but NOT receipt_key — the
+// bare private key must never be treated as a fetchable/portable file URL.
 const FILE_FIELDS = {
   member: ['profile_photo_url'],
   sermon: ['file_url', 'thumbnail_url'],
@@ -629,6 +651,14 @@ function rewriteFileField(modelName, id, field, url) {
   const tableName = TABLE_MAP[modelName];
   if (!tableName) return;
   getDb().prepare(`UPDATE "${tableName}" SET "${field}" = ?, updatedAt = ? WHERE id = ?`).run(url, new Date().toISOString(), id);
+}
+
+// After a receipt's bytes are uploaded to private R2, write the canonical key and
+// clear the transient local staging URL atomically (so the localhost URL is never
+// synced and getReceiptUrl falls through to the signed-read path). Bumps updatedAt
+// so the row re-pushes carrying the key.
+function setReceiptKey(id, key) {
+  getDb().prepare(`UPDATE expenditures SET receipt_key = ?, receipt_url = NULL, updatedAt = ? WHERE id = ?`).run(key, new Date().toISOString(), id);
 }
 
 // Local rows by id (used to re-push rows the cloud previously rejected — the
@@ -663,7 +693,13 @@ function upsertRemoteRow(modelName, remoteRow) {
   const colList = cols.map((c) => `"${c}"`).join(', ');
   const placeholders = cols.map(() => '?').join(', ');
   const setCols = cols.filter((c) => c !== 'id' && c !== 'createdAt');
-  const setClause = setCols.map((c) => `"${c}" = excluded."${c}"`).join(', ');
+  // Don't let a pulled row (whose file URL the cloud NULLed) erase a local file field
+  // that still holds a not-yet-uploaded localhost /uploads staging URL — that would
+  // orphan the only pointer to a receipt/photo whose bytes haven't reached R2 yet.
+  const fileFields = new Set(FILE_FIELDS[modelName] || []);
+  const setClause = setCols.map((c) => fileFields.has(c)
+    ? `"${c}" = CASE WHEN excluded."${c}" IS NULL AND "${tableName}"."${c}" LIKE 'http://localhost:%/uploads/%' THEN "${tableName}"."${c}" ELSE excluded."${c}" END`
+    : `"${c}" = excluded."${c}"`).join(', ');
   const sql =
     `INSERT INTO "${tableName}" (${colList}) VALUES (${placeholders}) ` +
     `ON CONFLICT(id) DO UPDATE SET ${setClause} ` +
@@ -701,4 +737,4 @@ function upsertSingleton(modelName, remoteRow) {
   return true;
 }
 
-module.exports = { initDb, getDb, createPrismaClient, localUsers, runInTransaction, syncMeta, deadLetter, localColumns, selectChangedSince, selectByIds, upsertRemoteRow, upsertSingleton, FILE_FIELDS, rowsWithLocalFile, rewriteFileField };
+module.exports = { initDb, getDb, createPrismaClient, localUsers, runInTransaction, syncMeta, deadLetter, localColumns, selectChangedSince, selectByIds, upsertRemoteRow, upsertSingleton, FILE_FIELDS, isAllowedMediaHost, rowsWithLocalFile, rewriteFileField, setReceiptKey };

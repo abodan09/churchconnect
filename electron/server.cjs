@@ -3,9 +3,9 @@ const express = require('express');
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
-const { createPrismaClient, localUsers, FILE_FIELDS } = require('./db.cjs');
+const { createPrismaClient, localUsers, FILE_FIELDS, isAllowedMediaHost } = require('./db.cjs');
 
-const BLOB_HOST = /(^|\.)blob\.vercel-storage\.com$/;   // only proxy Vercel Blob
+const BLOB_HOST = /(^|\.)blob\.vercel-storage\.com$/;   // (retained for reference)
 const MEDIA_STREAM_THROUGH = 100 * 1024 * 1024;         // don't cache files bigger than this
 let mediaCacheDir = null;
 
@@ -24,7 +24,7 @@ function rewriteMediaUrls(model, records) {
     if (!r) continue;
     for (const f of fields) {
       const v = r[f];
-      if (typeof v === 'string' && BLOB_HOST.test((() => { try { return new URL(v).hostname; } catch { return ''; } })())) {
+      if (typeof v === 'string' && isAllowedMediaHost((() => { try { return new URL(v).hostname; } catch { return ''; } })())) {
         r[f] = `http://localhost:${LOCAL_PORT}/media?u=${encodeURIComponent(v)}`;
       }
     }
@@ -72,7 +72,8 @@ function serveCachedFile(req, res, filePath, contentType) {
     fs.createReadStream(filePath).pipe(res);
   }
 }
-const { hashPassword, verifyPassword, signToken, authMiddleware, requireRole } = require('./auth.cjs');
+const { hashPassword, verifyPassword, signToken, signReceiptTicket, verifyReceiptTicket, authMiddleware, requireRole } = require('./auth.cjs');
+const RECEIPT_ROLES = ['finance_officer', 'pastor_admin', 'super_admin'];
 
 const ROLE_SET = ['super_admin', 'pastor_admin', 'finance_officer', 'department_head', 'data_entry_staff', 'member'];
 const ELEVATED = ['super_admin', 'pastor_admin'];
@@ -150,7 +151,7 @@ function createServer(userDataPath) {
     if (!u) return res.status(400).end();
     let parsed;
     try { parsed = new URL(u); } catch { return res.status(400).end(); }
-    if (parsed.protocol !== 'https:' || !BLOB_HOST.test(parsed.hostname)) return res.status(400).end();
+    if (parsed.protocol !== 'https:' || !isAllowedMediaHost(parsed.hostname)) return res.status(400).end();
 
     const key = crypto.createHash('sha256').update(u).digest('hex');
     const cachePath = path.join(mediaCacheDir, key);
@@ -159,9 +160,10 @@ function createServer(userDataPath) {
       let ct; try { ct = JSON.parse(fs.readFileSync(metaPath, 'utf8')).contentType; } catch {}
       return serveCachedFile(req, res, cachePath, ct || ctFromUrl(u));
     }
-    // Cache miss — fetch from Blob (online only).
+    // Cache miss — fetch from Blob/R2 (online only). redirect:'manual' so an
+    // open-redirect on an allowed host can't bounce the fetch to an unlisted host.
     try {
-      const upstream = await fetch(u);
+      const upstream = await fetch(u, { redirect: 'manual' });
       if (!upstream.ok || !upstream.body) return res.status(upstream.status || 502).end();
       const ct = upstream.headers.get('content-type') || ctFromUrl(u) || 'application/octet-stream';
       const len = parseInt(upstream.headers.get('content-length') || '0', 10);
@@ -182,6 +184,58 @@ function createServer(userDataPath) {
       return serveCachedFile(req, res, cachePath, ct);
     } catch {
       return res.status(504).end(); // offline / fetch failed → broken-media icon
+    }
+  });
+
+  // ── Private receipts ───────────────────────────────────────────────────────────
+  // Two-step so the per-user finance-role check happens where a token travels:
+  //  1) /api/receipt-grant  (header-authed + role-gated) mints a 2-min ticket.
+  //  2) /api/receipt?key=&t=  (NOT header-authed — it's loaded as a navigation)
+  //     verifies the ticket, then serves from the sha256(key) cache (offline) or a
+  //     cloud-signed GET (online). A raw device-token holder can't reach it without
+  //     first passing the local finance-role gate to obtain a ticket.
+  app.post('/api/receipt-grant', authMiddleware, requireRole(...RECEIPT_ROLES), (req, res) => {
+    const key = String(req.body?.key || '');
+    if (!key || key.includes('..') || !/^churches\/[^/]+\/receipts\//.test(key)) return res.status(400).json({ error: 'Invalid key' });
+    const t = signReceiptTicket(key);
+    return res.json({ url: `/api/receipt?key=${encodeURIComponent(key)}&t=${encodeURIComponent(t)}` });
+  });
+
+  app.get('/api/receipt', async (req, res) => {
+    const key = String(req.query.key || '');
+    const t = String(req.query.t || '');
+    if (!key || key.includes('..') || !verifyReceiptTicket(t, key)) return res.status(403).end();
+    const cacheKey = crypto.createHash('sha256').update(key).digest('hex');
+    const cachePath = path.join(mediaCacheDir, cacheKey);
+    const metaPath = `${cachePath}.meta`;
+    if (fs.existsSync(cachePath)) {
+      let ct; try { ct = JSON.parse(fs.readFileSync(metaPath, 'utf8')).contentType; } catch {}
+      return serveCachedFile(req, res, cachePath, ct || 'application/octet-stream');
+    }
+    // Not cached — get a cloud-signed GET (online only), then cache + serve.
+    let signed;
+    try { signed = await require('./sync.cjs').signReceiptUrl(key); } catch { signed = null; }
+    if (!signed) return res.status(504).end(); // offline or not found
+    try {
+      const upstream = await fetch(signed, { redirect: 'manual' });
+      if (!upstream.ok || !upstream.body) return res.status(upstream.status || 502).end();
+      const ct = upstream.headers.get('content-type') || 'application/octet-stream';
+      const len = parseInt(upstream.headers.get('content-length') || '0', 10);
+      const { Readable } = require('stream');
+      if (!len || len > MEDIA_STREAM_THROUGH) {
+        const headers = { 'Content-Type': ct, 'Accept-Ranges': 'none' };
+        if (len) headers['Content-Length'] = len;
+        res.status(200).set(headers);
+        return Readable.fromWeb(upstream.body).pipe(res);
+      }
+      const buf = Buffer.from(await upstream.arrayBuffer());
+      const tmp = `${cachePath}.part`;
+      fs.writeFileSync(tmp, buf);
+      fs.renameSync(tmp, cachePath);
+      try { fs.writeFileSync(metaPath, JSON.stringify({ contentType: ct, size: buf.length, key })); } catch {}
+      return serveCachedFile(req, res, cachePath, ct);
+    } catch {
+      return res.status(504).end();
     }
   });
 
@@ -407,6 +461,17 @@ function createServer(userDataPath) {
 
     const db = _prisma[model];
 
+    // Staged receipts live in the loopback-served /uploads dir; only finance roles
+    // may see their URL. Resolve the LIVE role (not the possibly-stale token role).
+    function guardReceipts(records) {
+      if (model !== 'expenditure') return records;
+      let role = req.localUser?.role;
+      try { const fresh = req.localUser?.sub && localUsers.findById(req.localUser.sub); if (fresh) role = fresh.role; } catch { /* fall back to token role */ }
+      if (RECEIPT_ROLES.includes(role)) return records;
+      for (const r of (Array.isArray(records) ? records : [records])) { if (r && r.receipt_url) r.receipt_url = null; }
+      return records;
+    }
+
     try {
       if (req.method === 'GET' && !id) {
         const { sort, limit, ...filter } = req.query;
@@ -427,13 +492,13 @@ function createServer(userDataPath) {
           else where[k] = val;
         }
         const records = db.findMany({ where: Object.keys(where).length ? where : undefined, orderBy, take });
-        return res.json(rewriteMediaUrls(model, records));
+        return res.json(rewriteMediaUrls(model, guardReceipts(records)));
       }
 
       if (req.method === 'GET' && id) {
         const record = db.findUnique({ where: { id } });
         if (!record) return res.status(404).json({ error: 'Not found' });
-        return res.json(rewriteMediaUrls(model, record));
+        return res.json(rewriteMediaUrls(model, guardReceipts(record)));
       }
 
       if (req.method === 'POST') {

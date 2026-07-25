@@ -177,11 +177,15 @@ async function pushEntityRows(token, entity, rows) {
 
 // ── File sync (media bytes) ─────────────────────────────────────────────────
 const FILE_MAX_BUFFERED = 4 * 1024 * 1024;   // buffered cloud-upload limit (Vercel body cap)
-const FILE_MAX_LARGE = 200 * 1024 * 1024;    // above this, a file stays device-local
+const FILE_MAX_LARGE = 500 * 1024 * 1024;    // above this, a file stays device-local (matches R2 presign cap)
 const PREFETCH_MAX = 25 * 1024 * 1024;       // auto-cache pulled files up to this size
 const LOCAL_UPLOAD_RE = /^http:\/\/(?:localhost|127\.0\.0\.1):\d+\/uploads\/(.+)$/;
 const BLOB_URL_RE = /\.blob\.vercel-storage\.com\//;
-const CT_BY_EXT = { '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.gif': 'image/gif', '.webp': 'image/webp', '.svg': 'image/svg+xml', '.mp3': 'audio/mpeg', '.m4a': 'audio/mp4', '.wav': 'audio/wav', '.ogg': 'audio/ogg', '.mp4': 'video/mp4', '.webm': 'video/webm', '.mov': 'video/quicktime', '.pdf': 'application/pdf' };
+// Must cover every extension the cloud R2 allowlists accept (api/r2-presign.js
+// SERMON_TYPES/RECEIPT_TYPES) or a supported file staged on the desktop guesses to
+// octet-stream, gets 415'd at presign, and is silently orphaned (its localhost URL
+// is NULLed on the metadata push). heic/heif = iPhone photo receipts; aac/mkv sermons.
+const CT_BY_EXT = { '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.gif': 'image/gif', '.webp': 'image/webp', '.svg': 'image/svg+xml', '.heic': 'image/heic', '.heif': 'image/heif', '.mp3': 'audio/mpeg', '.m4a': 'audio/mp4', '.aac': 'audio/aac', '.wav': 'audio/wav', '.ogg': 'audio/ogg', '.mp4': 'video/mp4', '.webm': 'video/webm', '.mov': 'video/quicktime', '.mkv': 'video/x-matroska', '.pdf': 'application/pdf' };
 
 function userData() { return app.getPath('userData'); }
 function guessContentType(p) { return CT_BY_EXT[path.extname(p).toLowerCase()] || 'application/octet-stream'; }
@@ -200,12 +204,19 @@ function cacheLocalAs(canonicalUrl, srcPath) {
   try { fs.writeFileSync(dest + '.meta', JSON.stringify({ contentType: guessContentType(srcPath), size: fs.statSync(srcPath).size, url: canonicalUrl })); } catch {}
 }
 
-// Upload one local file to the cloud Blob; returns the canonical URL, or null if
-// it can't (offline / too big). Throws only on auth. Small files stream through
-// the buffered function; large files go direct-to-blob (bypassing the 4.5 MB
-// function limit). Uses statSync so a big file isn't read into memory just to
-// classify it.
-async function uploadLocalFile(token, filePath, churchId) {
+// Upload one local file, routing by what it is:
+//   sermon file_url      -> public R2 (presigned PUT), returns { url }
+//   expenditure receipt  -> private R2 (presigned PUT), returns { key }
+//   logos/photos/thumbs  -> Vercel Blob (unchanged),   returns { url }
+// Return shapes: { url } | { key } (success) | { skip: true } (deterministic
+// failure — don't retry this session) | null (transient — retry next cycle).
+// Throws only on auth. The desktop holds no R2 creds, so R2 uploads go through the
+// cloud presign endpoint authed by the device sync token.
+async function uploadLocalFile(token, filePath, { churchId, model, field }) {
+  if (model === 'sermon' && field === 'file_url') return uploadViaR2Presign(token, filePath, 'sermon');
+  if (model === 'expenditure' && field === 'receipt_url') return uploadViaR2Presign(token, filePath, 'receipt');
+
+  // Vercel Blob path (logos, member/property photos, sermon thumbnails).
   let size;
   try { size = fs.statSync(filePath).size; } catch { return null; }
   if (size <= 0 || size > FILE_MAX_LARGE) return null; // absurdly large -> stays local
@@ -217,8 +228,8 @@ async function uploadLocalFile(token, filePath, churchId) {
         body: fs.readFileSync(filePath),
       }, 120000);
       if (status === 401) throw Object.assign(new Error('auth'), { kind: 'auth' });
-      if (status === 413) return null;
-      return json?.file_url || null;
+      if (status === 413) return { skip: true };
+      return json?.file_url ? { url: json.file_url } : null;
     }
     // Large file: direct-to-blob via the client-upload token endpoint.
     if (!churchId) return null;
@@ -230,11 +241,68 @@ async function uploadLocalFile(token, filePath, churchId) {
       handleUploadUrl: `${_cloudUrl}/api/blob-upload-token`,
       clientPayload: token,
     });
-    return blob?.url || null;
+    return blob?.url ? { url: blob.url } : null;
   } catch (e) {
     if (e?.kind === 'auth') throw e;
     return null; // network/offline -> retry next cycle (field keeps its local URL)
   }
+}
+
+// Upload bytes to R2 via a cloud-minted presigned PUT (the size is pinned into the
+// signature, so the PUT must carry exactly that many bytes).
+async function uploadViaR2Presign(token, filePath, kind) {
+  let size;
+  try { size = fs.statSync(filePath).size; } catch { return null; }
+  if (size <= 0) return { skip: true };
+  const contentType = guessContentType(filePath);
+  let presign;
+  try {
+    presign = await fetchJson(`${_cloudUrl}/api/r2-presign`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ kind, filename: path.basename(filePath), contentType, size }),
+    }, 60000);
+  } catch { return null; } // offline -> retry
+  const { status, json } = presign;
+  if (status === 401) throw Object.assign(new Error('auth'), { kind: 'auth' });
+  if (status === 400 || status === 413 || status === 415) return { skip: true }; // bad type/size -> permanent
+  if (status !== 200 || !json?.uploadUrl) return null; // 5xx/misconfig -> retry
+  let put;
+  try {
+    put = await fetch(json.uploadUrl, { method: 'PUT', body: fs.readFileSync(filePath), headers: { 'Content-Type': json.contentType || contentType } });
+  } catch { return null; } // network -> retry
+  if (!put.ok) return put.status === 403 ? { skip: true } : null; // 403 = size/sig mismatch (deterministic)
+  return kind === 'receipt' ? { key: json.key } : { url: json.fileUrl };
+}
+
+// Cache a just-uploaded private receipt's bytes under sha256(KEY) so it renders
+// offline immediately (the /api/receipt read path looks here first).
+function cacheReceiptLocal(key, srcPath) {
+  const dest = path.join(userData(), 'media-cache', crypto.createHash('sha256').update(key).digest('hex'));
+  if (fs.existsSync(dest)) return;
+  try {
+    fs.mkdirSync(path.dirname(dest), { recursive: true });
+    fs.copyFileSync(srcPath, dest);
+    fs.writeFileSync(dest + '.meta', JSON.stringify({ contentType: guessContentType(srcPath), size: fs.statSync(srcPath).size, key }));
+  } catch { /* best effort */ }
+}
+
+function hostnameOf(u) { try { return new URL(u).hostname; } catch { return ''; } }
+
+// Ask the cloud for a short-lived signed GET for a private receipt key, using the
+// device sync token. The cloud binds the key to a real receipt in this church
+// before signing. Returns the signed URL, or null (offline / not found).
+async function signReceiptUrl(key) {
+  const token = loadToken();
+  if (!token) return null;
+  try {
+    const { status, json } = await fetchJson(`${_cloudUrl}/api/media/sign`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ key }),
+    }, 30000);
+    return status === 200 ? (json?.url || null) : null;
+  } catch { return null; }
 }
 
 // Phase 0: upload any local-only file bytes to the cloud and rewrite the field to
@@ -254,16 +322,26 @@ async function pushLocalFiles(token) {
         if (processed >= 50) return; // bound per-cycle work
         const lp = localPathFromUrl(row[field]);
         if (!lp || !fs.existsSync(lp)) continue;
-        const url = await uploadLocalFile(token, lp, churchId);
-        if (url) {
-          db.rewriteFileField(model, row.id, field, url);
-          try { cacheLocalAs(url, lp); } catch {}
-          processed += 1;
+        if (_skipFiles.has(lp)) continue; // deterministic failure earlier this session
+        const result = await uploadLocalFile(token, lp, { churchId, model, field });
+        if (!result) continue;                       // transient -> keep local, retry next cycle
+        if (result.skip) { _skipFiles.add(lp); continue; } // permanent -> stop re-attempting
+        if (result.key) {                            // receipt -> private R2 key
+          db.setReceiptKey(row.id, result.key);
+          cacheReceiptLocal(result.key, lp);         // finance-gated cache (offline viewing)
+          try { fs.unlinkSync(lp); } catch {}        // remove the plaintext copy from the shared /uploads dir
+        } else if (result.url) {                     // sermon / logo / photo -> canonical URL
+          db.rewriteFileField(model, row.id, field, result.url);
+          try { cacheLocalAs(result.url, lp); } catch {}
         }
+        processed += 1;
       }
     }
   }
 }
+// Files that failed deterministically (unsupported type/size/signature) — don't
+// re-attempt them every cycle. Cleared on restart (re-tries once, then re-skips).
+const _skipFiles = new Set();
 
 // Prefetch a pulled Blob URL into the local cache so it renders offline. Bounded,
 // best-effort; never throws into the sync cycle.
@@ -371,7 +449,7 @@ async function runSync({ reason } = {}) {
         if (rows.length) {
           const applyFn = SINGLETON_MODELS.has(MODEL_OF[entity]) ? db.upsertSingleton : db.upsertRemoteRow;
           db.runInTransaction(() => { for (const r of rows) applyFn(MODEL_OF[entity], r); });
-          if (ff) for (const r of rows) for (const f of ff) { const v = r[f]; if (typeof v === 'string' && BLOB_URL_RE.test(v)) prefetchUrls.push(v); }
+          if (ff) for (const r of rows) for (const f of ff) { const v = r[f]; if (typeof v === 'string' && db.isAllowedMediaHost(hostnameOf(v))) prefetchUrls.push(v); }
         }
         if (json.hasMore && json.nextCursor) cursor = json.nextCursor;
         else break;
@@ -414,4 +492,4 @@ function start() {
   _timer = setInterval(() => runSync({ reason: 'interval' }), SYNC_INTERVAL_MS);
 }
 
-module.exports = { init, setWindow, start, getStatus, runSync, enableSync, disableSync, storeActivationCredentials, ensureDeviceId: deviceId };
+module.exports = { init, setWindow, start, getStatus, runSync, enableSync, disableSync, storeActivationCredentials, ensureDeviceId: deviceId, signReceiptUrl };
