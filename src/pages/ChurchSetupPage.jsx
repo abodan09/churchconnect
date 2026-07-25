@@ -32,7 +32,7 @@ const CURRENCIES = [
 
 const LOGO_MIN_PX = 100;
 const LOGO_MAX_PX = 4000;
-const LOGO_MAX_BYTES = 5 * 1024 * 1024;
+const LOGO_MAX_BYTES = 4 * 1024 * 1024;
 
 function getImageDimensions(objectUrl) {
   return new Promise((resolve, reject) => {
@@ -77,7 +77,7 @@ export default function ChurchSetupPage() {
     }
     if (file.size > LOGO_MAX_BYTES) {
       const sizeMB = (file.size / 1024 / 1024).toFixed(1);
-      setLogoError(`File is ${sizeMB} MB — must be under 5 MB. Try compressing it or choosing a smaller version.`);
+      setLogoError(`File is ${sizeMB} MB — must be under 4 MB. Try compressing it or choosing a smaller version.`);
       return;
     }
 
@@ -212,7 +212,7 @@ export default function ChurchSetupPage() {
                     <input type="file" accept="image/*" className="hidden" onChange={handleLogoUpload} disabled={uploading} />
                   </label>
                 </div>
-                <p className="text-xs text-muted-foreground mt-2">JPG, PNG, GIF, SVG, WebP · Max 5 MB · 100–4000 px · You can add this later too</p>
+                <p className="text-xs text-muted-foreground mt-2">JPG, PNG, GIF, SVG, WebP · Max 4 MB · 100–4000 px · You can add this later too</p>
                 <div className="mt-2">
                   <p className="text-xs text-muted-foreground mb-1">Or paste a logo URL directly:</p>
                   <input

@@ -11,7 +11,7 @@ import { Plus, Search, Edit, Trash2, Mic2, Video, Play } from "lucide-react";
 const EMPTY = { title: "", description: "", preacher: "", date: "", department_id: "", department_name: "", media_type: "audio", file_url: "", thumbnail_url: "", duration_minutes: "", tags: "" };
 
 export default function SermonsPage() {
-  const { user } = useAuth();
+  const { user, church_id } = useAuth();
   const [sermons, setSermons] = useState([]);
   const [departments, setDepartments] = useState([]);
   const [search, setSearch] = useState("");
@@ -39,9 +39,15 @@ export default function SermonsPage() {
     const file = e.target.files[0];
     if (!file) return;
     setUploading(true);
-    const { file_url } = await uploadFile(file);
-    setForm(p => ({ ...p, file_url }));
-    setUploading(false);
+    try {
+      const { file_url } = await uploadFile(file, church_id);
+      setForm(p => ({ ...p, file_url }));
+    } catch (err) {
+      console.error('Sermon upload failed:', err);
+      alert(err?.message || 'Upload failed. Please try again.');
+    } finally {
+      setUploading(false);
+    }
   }
 
   async function handleSave() {

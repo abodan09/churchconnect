@@ -102,14 +102,35 @@ export async function updateSettings(data) {
 }
 
 // File upload — replaces base44.integrations.Core.UploadFile
-export async function uploadFile(file) {
+// Cloud + large file (> 4 MB): upload straight to Vercel Blob (the serverless
+// function caps request bodies at 4.5 MB). Small files, and ALL Electron uploads
+// (which hit the local Express server / disk, no size limit), stream to /api/upload.
+export async function uploadFile(file, churchId) {
+  const isEl = typeof window !== 'undefined' && !!window.electronAPI?.isElectron;
+  if (!isEl && file.size > 4 * 1024 * 1024) {
+    if (!churchId) throw new Error('This file is large — a church context is required to upload it.');
+    const { upload } = await import('@vercel/blob/client');
+    const ext = (file.name.match(/\.[a-z0-9]+$/i) || [''])[0].toLowerCase();
+    const pathname = `churches/${churchId}/${crypto.randomUUID()}${ext}`;
+    const token = await getToken();
+    const blob = await upload(pathname, file, {
+      access: 'public',
+      contentType: file.type,
+      handleUploadUrl: `${getApiBase()}/api/blob-upload-token`,
+      clientPayload: token || '',
+    });
+    return { file_url: blob.url };
+  }
   const headers = {
     'Content-Type': file.type,
     'X-Filename': file.name,
     ...(await getAuthHeader()),
   };
   const res = await fetch(`${getApiBase()}/api/upload`, { method: 'POST', headers, body: file });
-  if (!res.ok) throw new Error('Upload failed');
+  if (!res.ok) {
+    const e = await res.json().catch(() => ({}));
+    throw new Error(e.error || 'Upload failed');
+  }
   return res.json(); // { file_url }
 }
 
