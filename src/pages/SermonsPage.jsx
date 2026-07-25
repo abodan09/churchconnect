@@ -10,6 +10,21 @@ import { Plus, Search, Edit, Trash2, Mic2, Video, Play } from "lucide-react";
 
 const EMPTY = { title: "", description: "", preacher: "", date: "", department_id: "", department_name: "", media_type: "audio", file_url: "", thumbnail_url: "", duration_minutes: "", tags: "" };
 
+// Turn a YouTube / Vimeo / Facebook watch URL into an embeddable player URL.
+// Returns null for anything that isn't a recognised video-platform link.
+function toEmbedUrl(url) {
+  if (typeof url !== "string" || !url) return null;
+  let m = url.match(/(?:youtube\.com\/(?:watch\?v=|embed\/|shorts\/|live\/)|youtu\.be\/)([\w-]{11})/);
+  if (m) return `https://www.youtube.com/embed/${m[1]}`;
+  m = url.match(/vimeo\.com\/(?:video\/)?(\d+)/);
+  if (m) return `https://player.vimeo.com/video/${m[1]}`;
+  if (/(?:facebook\.com\/.+\/videos\/|fb\.watch\/)/.test(url)) {
+    return `https://www.facebook.com/plugins/video.php?href=${encodeURIComponent(url)}&show_text=false`;
+  }
+  return null;
+}
+function isEmbedUrl(url) { return !!toEmbedUrl(url); }
+
 export default function SermonsPage() {
   const { user, church_id } = useAuth();
   const [sermons, setSermons] = useState([]);
@@ -21,6 +36,7 @@ export default function SermonsPage() {
   const [editId, setEditId] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [source, setSource] = useState("upload"); // 'upload' | 'link' (UI only)
 
   useEffect(() => { loadData(); }, []);
 
@@ -32,8 +48,8 @@ export default function SermonsPage() {
     setSermons(s); setDepartments(d); setLoading(false);
   }
 
-  function openNew() { setForm(EMPTY); setEditId(null); setOpen(true); }
-  function openEdit(s) { setForm({ ...s, duration_minutes: String(s.duration_minutes || "") }); setEditId(s.id); setOpen(true); }
+  function openNew() { setForm(EMPTY); setEditId(null); setSource("upload"); setOpen(true); }
+  function openEdit(s) { setForm({ ...s, duration_minutes: String(s.duration_minutes || "") }); setEditId(s.id); setSource(isEmbedUrl(s.file_url) ? "link" : "upload"); setOpen(true); }
 
   async function handleFileUpload(e) {
     const file = e.target.files[0];
@@ -111,9 +127,11 @@ export default function SermonsPage() {
             </div>
             {s.file_url && (
               <div className="mt-3">
-                {s.media_type === "audio"
-                  ? <audio controls src={s.file_url} className="w-full h-8" />
-                  : <a href={s.file_url} target="_blank" rel="noreferrer" className="flex items-center gap-2 text-xs text-primary hover:underline"><Play className="w-3 h-3" />Play Video</a>
+                {isEmbedUrl(s.file_url)
+                  ? <div className="aspect-video w-full overflow-hidden rounded-lg bg-black"><iframe src={toEmbedUrl(s.file_url)} title={s.title} className="w-full h-full" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowFullScreen /></div>
+                  : s.media_type === "audio"
+                    ? <audio controls src={s.file_url} className="w-full h-8" />
+                    : <a href={s.file_url} target="_blank" rel="noreferrer" className="flex items-center gap-2 text-xs text-primary hover:underline"><Play className="w-3 h-3" />Play Video</a>
                 }
               </div>
             )}
@@ -152,12 +170,28 @@ export default function SermonsPage() {
                 </SelectContent>
               </Select>
             </div>
-            <div>
-              <Label>Upload File</Label>
-              <Input type="file" accept={form.media_type === "audio" ? "audio/*" : "video/*"} onChange={handleFileUpload} className="mt-1" disabled={uploading} />
-              {uploading && <p className="text-xs text-primary mt-1">Uploading...</p>}
-              {form.file_url && <p className="text-xs text-green-600 mt-1 truncate">Uploaded: {form.file_url}</p>}
-            </div>
+            {form.media_type === "video" && (
+              <div className="flex rounded-lg border border-border p-0.5 text-sm">
+                <button type="button" onClick={() => setSource("upload")} className={`flex-1 rounded-md py-1.5 font-medium ${source === "upload" ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}>Upload file</button>
+                <button type="button" onClick={() => setSource("link")} className={`flex-1 rounded-md py-1.5 font-medium ${source === "link" ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}>Paste video link</button>
+              </div>
+            )}
+            {form.media_type === "video" && source === "link" ? (
+              <div>
+                <Label>Video link (YouTube, Vimeo, Facebook)</Label>
+                <Input value={form.file_url} onChange={e => setForm(p => ({ ...p, file_url: e.target.value }))} placeholder="https://youtube.com/watch?v=…" className="mt-1" />
+                {form.file_url && (isEmbedUrl(form.file_url)
+                  ? <p className="text-xs text-green-600 mt-1">✓ This video will embed and play in the sermon card.</p>
+                  : <p className="text-xs text-amber-600 mt-1">Not a recognised YouTube/Vimeo/Facebook link — it’ll be saved as a plain link.</p>)}
+              </div>
+            ) : (
+              <div>
+                <Label>Upload File</Label>
+                <Input type="file" accept={form.media_type === "audio" ? "audio/*" : "video/*"} onChange={handleFileUpload} className="mt-1" disabled={uploading} />
+                {uploading && <p className="text-xs text-primary mt-1">Uploading...</p>}
+                {form.file_url && !isEmbedUrl(form.file_url) && <p className="text-xs text-green-600 mt-1 truncate">Uploaded: {form.file_url}</p>}
+              </div>
+            )}
             <div><Label>Description</Label><Input value={form.description} onChange={e=>setForm(p=>({...p,description:e.target.value}))} className="mt-1" /></div>
             <div><Label>Tags</Label><Input value={form.tags} onChange={e=>setForm(p=>({...p,tags:e.target.value}))} placeholder="faith, worship, ..." className="mt-1" /></div>
           </div>
