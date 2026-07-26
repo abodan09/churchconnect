@@ -48,6 +48,22 @@ export function isInMonth(str, monthIdx, year) {
   return !!d && d.getMonth() === monthIdx && d.getFullYear() === year;
 }
 
+// True when `str`'s calendar date falls within [fromStr, toStr] inclusive
+// (both "YYYY-MM-DD"). Same local-midnight parsing as isInMonth, so a record
+// never shifts across the range boundary in negative timezones.
+export function isInRange(str, fromStr, toStr) {
+  const d = parseLocalDate(str);
+  const from = parseLocalDate(fromStr);
+  const to = parseLocalDate(toStr);
+  return !!d && !!from && !!to && d >= from && d <= to;
+}
+
+// First day of the current month as a local "YYYY-MM-DD" string.
+export function firstOfMonthLocalISO() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
+}
+
 // Sun–Sat calendar weeks that overlap the month, each clamped to the month so
 // the weekly rows always sum exactly to the monthly total. The first and last
 // rows may be partial weeks. Returns [{ index, start, end, label }] where label

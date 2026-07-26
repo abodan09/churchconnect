@@ -1,11 +1,13 @@
 import { jsPDF } from "jspdf";
 import { format } from "date-fns";
-import { MONTHS, isInMonth } from "./finance";
+import { MONTHS, isInMonth, isInRange, parseLocalDate } from "./finance";
 
-// Single source of truth for the monthly financial-report PDF, used by both the
-// Dashboard (quick download) and the Financial Reports page. Pass the full record
-// arrays plus the target month/year — filtering happens here so both callers stay
-// consistent. `fmt` formats currency; `churchName` heads the document.
+// Single source of truth for the financial-report PDF, used by both the
+// Dashboard (quick monthly download) and the Financial Reports page. Pass the
+// full record arrays plus EITHER a target month (monthIdx + year) OR a custom
+// date range (from + to, "YYYY-MM-DD"; takes precedence) — filtering happens
+// here so both callers stay consistent. `fmt` formats currency; `churchName`
+// heads the document.
 //
 // splitOthers: when true, "Offerings" means only type==="offering" and a separate
 // "Others" line captures every other non-tithe giving type (special_offering,
@@ -14,14 +16,22 @@ import { MONTHS, isInMonth } from "./finance";
 export function generateFinancialReportPDF({
   monthIdx,
   year,
+  from = null,
+  to = null,
   giving = [],
   expenditures = [],
   fmt = (n) => `€${Number(n || 0).toLocaleString("en", { minimumFractionDigits: 2 })}`,
   churchName = "ChurchConnect",
   splitOthers = false,
 }) {
-  const filteredGiving = giving.filter((g) => isInMonth(g.date, monthIdx, year));
-  const filteredExp = expenditures.filter((e) => isInMonth(e.date, monthIdx, year));
+  const usingRange = !!(from && to);
+  const inPeriod = (dateStr) => (usingRange ? isInRange(dateStr, from, to) : isInMonth(dateStr, monthIdx, year));
+  const periodLabel = usingRange
+    ? `${format(parseLocalDate(from), "d MMM yyyy")} to ${format(parseLocalDate(to), "d MMM yyyy")}`
+    : `${MONTHS[monthIdx]} ${year}`;
+  const fileSlug = usingRange ? `${from}_to_${to}` : `${MONTHS[monthIdx].toLowerCase()}-${year}`;
+  const filteredGiving = giving.filter((g) => inPeriod(g.date));
+  const filteredExp = expenditures.filter((e) => inPeriod(e.date));
 
   const sum = (arr) => arr.reduce((s, r) => s + (r.amount || 0), 0);
   const totalTithes = sum(filteredGiving.filter((g) => g.type === "tithe"));
@@ -54,7 +64,7 @@ export function generateFinancialReportPDF({
   doc.text(churchName || "ChurchConnect", 15, 18);
   doc.setFontSize(13);
   doc.setFont("helvetica", "normal");
-  doc.text(`${MONTHS[monthIdx]} ${year} — Financial Report`, 15, 30);
+  doc.text(`${periodLabel} — Financial Report`, 15, 30);
   doc.setTextColor(100, 100, 100);
   doc.setFontSize(9);
   doc.text(`Generated: ${genDate}`, 15, 48);
@@ -138,18 +148,18 @@ export function generateFinancialReportPDF({
 
   startSection("Giving by Type", [["Type", 15], ["Amount", 155]]);
   const givingTypeEntries = Object.entries(givingByType);
-  if (givingTypeEntries.length === 0) note("No giving records for this month.");
+  if (givingTypeEntries.length === 0) note("No giving records for this period.");
   else givingTypeEntries.forEach(([type, amt]) => row([[type.replace(/_/g, " "), 15], [fmt(amt), 155]]));
   y += 6;
 
   startSection("Expenditures by Category", [["Category", 15], ["Amount", 155]]);
   const expCatEntries = Object.entries(expByCategory);
-  if (expCatEntries.length === 0) note("No approved expenditures for this month.");
+  if (expCatEntries.length === 0) note("No approved expenditures for this period.");
   else expCatEntries.forEach(([cat, amt]) => row([[cat, 15], [fmt(amt), 155]]));
   y += 6;
 
-  startSection("Giving Records", [["Member", 15], ["Date", 80], ["Type", 115], ["Amount", 155]]);
-  if (filteredGiving.length === 0) note("No giving records for this month.");
+  startSection("Giving Records", [["Giver", 15], ["Date", 80], ["Type", 115], ["Amount", 155]]);
+  if (filteredGiving.length === 0) note("No giving records for this period.");
   else {
     filteredGiving.slice(0, MAX_ROWS).forEach((g) => row([
       [(g.member_name || "Unknown").substring(0, 30), 15],
@@ -163,7 +173,7 @@ export function generateFinancialReportPDF({
 
   startSection("Approved Expenditures", [["Description", 15], ["Category", 90], ["Date", 130], ["Amount", 155]]);
   const approved = filteredExp.filter((e) => e.approval_status === "approved");
-  if (approved.length === 0) note("No approved expenditures for this month.");
+  if (approved.length === 0) note("No approved expenditures for this period.");
   else {
     approved.slice(0, MAX_ROWS).forEach((e) => row([
       [(e.description || "").substring(0, 35), 15],
@@ -174,5 +184,5 @@ export function generateFinancialReportPDF({
     moreNote(approved.length);
   }
 
-  doc.save(`financial-report-${MONTHS[monthIdx].toLowerCase()}-${year}.pdf`);
+  doc.save(`financial-report-${fileSlug}.pdf`);
 }

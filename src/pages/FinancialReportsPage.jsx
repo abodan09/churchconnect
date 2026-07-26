@@ -1,19 +1,16 @@
 import { useState, useEffect } from "react";
 import { entities, sendEmail } from '@/api/client';
 import { Button } from "@/components/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { FileBarChart2, Download, Send } from "lucide-react";
+import { Download, Send } from "lucide-react";
 import StatCard from "@/components/StatCard";
 import { HandCoins } from "lucide-react";
 import { generateFinancialReportPDF } from "@/lib/financeReport";
-import { isInMonth, makePdfMoneyFormatter } from "@/lib/finance";
+import { isInRange, parseLocalDate, firstOfMonthLocalISO, todayLocalISO, makePdfMoneyFormatter } from "@/lib/finance";
 import { useChurchSettings } from "@/lib/ChurchSettingsContext";
 import { format } from "date-fns";
 import { useBilling, UpgradePrompt } from "@/lib/billing";
-
-const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
-const YEARS = [2023, 2024, 2025, 2026].map(String);
 
 export default function FinancialReportsPage() {
   // has({ plan: 'pro' }) — imperative plan check (Clerk B2B billing)
@@ -23,10 +20,9 @@ export default function FinancialReportsPage() {
   const [expenditures, setExpenditures] = useState([]);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
-  const [month, setMonth] = useState(String(new Date().getMonth()));
-  const [year, setYear] = useState(String(new Date().getFullYear()));
+  const [fromDate, setFromDate] = useState(firstOfMonthLocalISO());
+  const [toDate, setToDate] = useState(todayLocalISO());
   const [emailTarget, setEmailTarget] = useState("");
-  const [generated, setGenerated] = useState(false);
 
   useEffect(() => { loadData(); }, []);
 
@@ -35,8 +31,8 @@ export default function FinancialReportsPage() {
     return <UpgradePrompt plan="pro" message="Financial Reports are available on the Pro plan." />;
   }
 
-  // Load the church's full history once; switching month/year then filters in
-  // memory so it feels instant (no spinner or refetch on every change).
+  // Load the church's full history once; changing the From/To dates then filters
+  // in memory so it feels instant (no spinner or refetch on every change).
   async function loadData() {
     setLoading(true);
     try {
@@ -53,13 +49,16 @@ export default function FinancialReportsPage() {
     }
   }
 
-  const monthIdx = parseInt(month);
-  const yearNum = parseInt(year);
+  // ISO "YYYY-MM-DD" strings compare chronologically, so string <= is safe here.
+  const rangeValid = !!fromDate && !!toDate && fromDate <= toDate;
+  const periodLabel = rangeValid
+    ? `${format(parseLocalDate(fromDate), "d MMM yyyy")} to ${format(parseLocalDate(toDate), "d MMM yyyy")}`
+    : "—";
 
-  // Timezone-safe month filtering — matches the shared PDF generator so the
+  // Timezone-safe range filtering — matches the shared PDF generator so the
   // on-screen figures and the downloaded/emailed report always agree.
-  const filteredGiving = giving.filter(g => isInMonth(g.date, monthIdx, yearNum));
-  const filteredExp = expenditures.filter(e => isInMonth(e.date, monthIdx, yearNum));
+  const filteredGiving = rangeValid ? giving.filter(g => isInRange(g.date, fromDate, toDate)) : [];
+  const filteredExp = rangeValid ? expenditures.filter(e => isInRange(e.date, fromDate, toDate)) : [];
 
   const totalTithes = filteredGiving.filter(g=>g.type==="tithe").reduce((s,g)=>s+(g.amount||0),0);
   const totalOfferings = filteredGiving.filter(g=>g.type==="offering").reduce((s,g)=>s+(g.amount||0),0);
@@ -69,23 +68,23 @@ export default function FinancialReportsPage() {
   const netBalance = totalIncome - approvedExp;
 
   function generatePDF() {
+    if (!rangeValid) return;
     generateFinancialReportPDF({
-      monthIdx,
-      year: yearNum,
+      from: fromDate,
+      to: toDate,
       giving,
       expenditures,
       fmt: makePdfMoneyFormatter(settings),
       churchName: settings?.church_name,
       splitOthers: true,
     });
-    setGenerated(true);
   }
 
   async function handleSendEmail() {
-    if (!emailTarget) return;
+    if (!emailTarget || !rangeValid) return;
     setSending(true);
     const body = `
-      <h2>ChurchConnect — ${MONTHS[monthIdx]} ${year} Financial Report</h2>
+      <h2>ChurchConnect — Financial Report (${periodLabel})</h2>
       <table border="1" cellpadding="8" style="border-collapse:collapse;width:100%">
         <tr><th>Item</th><th>Amount</th></tr>
         <tr><td>Total Tithes</td><td>${fmt(totalTithes)}</td></tr>
@@ -99,7 +98,7 @@ export default function FinancialReportsPage() {
     `;
     await sendEmail({
       to: emailTarget,
-      subject: `Financial Report — ${MONTHS[monthIdx]} ${year}`,
+      subject: `Financial Report — ${periodLabel}`,
       body,
       from_name: "ChurchConnect"
     });
@@ -111,26 +110,23 @@ export default function FinancialReportsPage() {
 
   return (
     <div className="space-y-6 max-w-5xl mx-auto">
-      <div><h1 className="text-2xl font-bold">Financial Reports</h1><p className="text-muted-foreground text-sm">Generate and share monthly financial summaries</p></div>
+      <div><h1 className="text-2xl font-bold">Financial Reports</h1><p className="text-muted-foreground text-sm">Generate and share financial summaries for any period</p></div>
 
       <div className="bg-white rounded-xl border border-border p-5 shadow-sm">
         <h2 className="font-semibold mb-4">Select Period</h2>
         <div className="flex flex-wrap gap-3 items-end">
           <div>
-            <Label>Month</Label>
-            <Select value={month} onValueChange={setMonth}>
-              <SelectTrigger className="w-36 mt-1"><SelectValue /></SelectTrigger>
-              <SelectContent>{MONTHS.map((m,i)=><SelectItem key={i} value={String(i)}>{m}</SelectItem>)}</SelectContent>
-            </Select>
+            <Label>From</Label>
+            <Input type="date" value={fromDate} max={toDate || undefined} onChange={e => setFromDate(e.target.value)} className="w-44 mt-1" />
           </div>
           <div>
-            <Label>Year</Label>
-            <Select value={year} onValueChange={setYear}>
-              <SelectTrigger className="w-28 mt-1"><SelectValue /></SelectTrigger>
-              <SelectContent>{YEARS.map(y=><SelectItem key={y} value={y}>{y}</SelectItem>)}</SelectContent>
-            </Select>
+            <Label>To</Label>
+            <Input type="date" value={toDate} min={fromDate || undefined} onChange={e => setToDate(e.target.value)} className="w-44 mt-1" />
           </div>
         </div>
+        {!rangeValid && (
+          <p className="text-sm text-destructive mt-3">Pick a valid period — the From date must be on or before the To date.</p>
+        )}
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
@@ -143,8 +139,8 @@ export default function FinancialReportsPage() {
 
       <div className="bg-white rounded-xl border border-border p-5 shadow-sm space-y-4">
         <h2 className="font-semibold">Generate PDF Report</h2>
-        <p className="text-muted-foreground text-sm">{filteredGiving.length} giving records and {filteredExp.length} expenditure records for {MONTHS[monthIdx]} {year}.</p>
-        <Button onClick={generatePDF} className="bg-primary text-primary-foreground gap-2">
+        <p className="text-muted-foreground text-sm">{filteredGiving.length} giving records and {filteredExp.length} expenditure records from {periodLabel}.</p>
+        <Button onClick={generatePDF} disabled={!rangeValid} className="bg-primary text-primary-foreground gap-2">
           <Download className="w-4 h-4" />Download PDF Report
         </Button>
       </div>
@@ -156,7 +152,7 @@ export default function FinancialReportsPage() {
             <Label>Recipient Email</Label>
             <input type="email" value={emailTarget} onChange={e=>setEmailTarget(e.target.value)} placeholder="pastor@church.org" className="mt-1 w-full border border-input rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring" />
           </div>
-          <Button onClick={handleSendEmail} disabled={!emailTarget || sending} className="bg-primary text-primary-foreground gap-2">
+          <Button onClick={handleSendEmail} disabled={!emailTarget || !rangeValid || sending} className="bg-primary text-primary-foreground gap-2">
             <Send className="w-4 h-4" />{sending ? "Sending..." : "Send Report"}
           </Button>
         </div>
