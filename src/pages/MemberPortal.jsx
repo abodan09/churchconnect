@@ -1,13 +1,12 @@
 import { useState, useEffect } from "react";
 import { entities } from "@/api/client";
 import { useAuth } from "@/lib/ClerkAuthContext";
+import { useChurchSettings } from "@/lib/ChurchSettingsContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Badge } from "@/components/ui/badge";
-import { HandCoins, CalendarDays, User, Megaphone, Heart, Users, AlertTriangle, Info, Pin } from "lucide-react";
+import { HandCoins, CalendarDays, Megaphone, Heart, Users, AlertTriangle, Info, Pin } from "lucide-react";
 import { format } from "date-fns";
 
 const PRIORITY_ICON = { urgent: AlertTriangle, info: Info, normal: Megaphone };
@@ -15,6 +14,7 @@ const PRIORITY_STYLE = { normal:"bg-blue-100 text-blue-700", info:"bg-gray-100 t
 
 export default function MemberPortal() {
   const { user: authUser } = useAuth();
+  const { fmt: fmtCtx, settings } = useChurchSettings() || {};
   const [member, setMember] = useState(null);
   const [giving, setGiving] = useState([]);
   const [events, setEvents] = useState([]);
@@ -109,7 +109,7 @@ export default function MemberPortal() {
     setTimeout(() => { setPrayerOpen(false); setPrayerSent(false); }, 2000);
   }
 
-  const fmt = n => `GHS ${Number(n).toLocaleString("en", { minimumFractionDigits: 2 })}`;
+  const fmt = fmtCtx || (n => `${settings?.currency_symbol || "€"}${Number(n || 0).toLocaleString("en", { minimumFractionDigits: 2 })}`);
   const totalGiven = giving.reduce((s, g) => s + (g.amount || 0), 0);
 
   const hasMilestones = milestones.baptism_date || milestones.membership_class_date || milestones.confirmation_date;

@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { entities } from "@/api/client";
+import { useChurchSettings } from "@/lib/ChurchSettingsContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -14,6 +15,7 @@ const CONDITIONS = ["excellent","good","fair","poor","decommissioned"];
 const COND_COLOR = { excellent:"bg-green-100 text-green-700", good:"bg-blue-100 text-blue-700", fair:"bg-amber-100 text-amber-700", poor:"bg-red-100 text-red-700", decommissioned:"bg-gray-100 text-gray-700" };
 
 export default function PropertiesPage() {
+  const { fmt: fmtCtx, settings } = useChurchSettings() || {};
   const [properties, setProperties] = useState([]);
   const [departments, setDepartments] = useState([]);
   const [search, setSearch] = useState("");
@@ -51,7 +53,8 @@ export default function PropertiesPage() {
     return match && matchType;
   });
 
-  const fmt = n => `€${Number(n||0).toLocaleString("en",{minimumFractionDigits:2})}`;
+  const fmt = fmtCtx || (n => `${settings?.currency_symbol || "€"}${Number(n||0).toLocaleString("en",{minimumFractionDigits:2})}`);
+  const currencyCode = settings?.currency_code || "EUR";
   const totalValue = properties.reduce((s,p)=>s+(p.purchase_value||0),0);
 
   if (loading) return <div className="flex items-center justify-center h-64"><div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" /></div>;
@@ -125,7 +128,7 @@ export default function PropertiesPage() {
               </Select>
             </div>
             <div><Label>Purchase Date</Label><Input type="date" value={form.purchase_date} onChange={e=>setForm(p=>({...p,purchase_date:e.target.value}))} className="mt-1" /></div>
-            <div><Label>Purchase Value (GHS)</Label><Input type="number" value={form.purchase_value} onChange={e=>setForm(p=>({...p,purchase_value:e.target.value}))} className="mt-1" /></div>
+            <div><Label>Purchase Value ({currencyCode})</Label><Input type="number" value={form.purchase_value} onChange={e=>setForm(p=>({...p,purchase_value:e.target.value}))} className="mt-1" /></div>
             <div className="col-span-2"><Label>Location / Serial Number</Label><Input value={form.location_or_serial} onChange={e=>setForm(p=>({...p,location_or_serial:e.target.value}))} className="mt-1" /></div>
             <div className="col-span-2"><Label>Department</Label>
               <Select value={form.assigned_department_id} onValueChange={v=>setForm(p=>({...p,assigned_department_id:v}))}>
