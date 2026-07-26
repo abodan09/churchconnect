@@ -117,6 +117,7 @@ CREATE TABLE IF NOT EXISTS member_relationships (
 CREATE TABLE IF NOT EXISTS departments (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
+  category TEXT DEFAULT 'department',
   description TEXT,
   head_name TEXT,
   head_user_id TEXT,
@@ -151,6 +152,8 @@ CREATE TABLE IF NOT EXISTS givings (
   id TEXT PRIMARY KEY,
   member_id TEXT NOT NULL,
   member_name TEXT,
+  giver_type TEXT DEFAULT 'member',
+  source_id TEXT,
   date TEXT NOT NULL,
   amount REAL NOT NULL,
   type TEXT DEFAULT 'tithe',
@@ -377,6 +380,10 @@ function initDb(userDataPath) {
   // no-op on existing installs, so without this a pulled receipt_key is dropped by
   // the localColumns allowlist and any local write throws "no such column".
   try { _db.exec(`ALTER TABLE expenditures ADD COLUMN receipt_key TEXT`); } catch { /* already exists */ }
+  // Giving sources (member/church/department/ministry) + department category.
+  try { _db.exec(`ALTER TABLE givings ADD COLUMN giver_type TEXT DEFAULT 'member'`); } catch { /* already exists */ }
+  try { _db.exec(`ALTER TABLE givings ADD COLUMN source_id TEXT`); } catch { /* already exists */ }
+  try { _db.exec(`ALTER TABLE departments ADD COLUMN category TEXT DEFAULT 'department'`); } catch { /* already exists */ }
   return _db;
 }
 

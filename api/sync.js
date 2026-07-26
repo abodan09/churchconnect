@@ -38,7 +38,7 @@ const NOT_NULL_DEFAULTS = {
   members: { membership_status: 'active' },
   departments: { media_upload_enabled: false, allowed_media_types: 'none', is_active: true },
   events: { event_type: 'service', is_public: true },
-  givings: { type: 'tithe', payment_method: 'cash' },
+  givings: { type: 'tithe', payment_method: 'cash', member_id: '' }, // member_id '' = non-member giving (church/department/ministry)
   expenditures: { approval_status: 'pending' },
   attendances: { status: 'present' },
   smallgroups: { type: 'bible_study', meeting_frequency: 'weekly', is_active: true, is_open: true },
@@ -59,9 +59,9 @@ const SYNC_ENTITIES = {
   // syncing it would make one backend show a login that doesn't exist on the other.
   members: { model: 'member', table: 'Member', cols: ['id', 'church_id', 'first_name', 'last_name', 'email', 'phone', 'address', 'address_history', 'department_id', 'department_name', 'join_date', 'membership_status', 'profile_photo_url', 'gender', 'date_of_birth', 'marital_status', 'occupation', 'emergency_contact_name', 'emergency_contact_phone', 'notes', 'baptism_date', 'membership_class_date', 'confirmation_date', 'volunteer_status', 'background_check_date', 'created_by_id', 'createdAt', 'updatedAt'] },
   memberrelationships: { model: 'memberRelationship', table: 'MemberRelationship', cols: ['id', 'church_id', 'member_id', 'relationship_type', 'related_member_id', 'related_name', 'related_phone', 'related_email', 'related_notes', 'created_by_id', 'createdAt', 'updatedAt'] },
-  departments: { model: 'department', table: 'Department', cols: ['id', 'church_id', 'name', 'description', 'head_name', 'head_user_id', 'media_upload_enabled', 'allowed_media_types', 'is_active', 'color', 'allowed_features', 'created_by_id', 'createdAt', 'updatedAt'] },
+  departments: { model: 'department', table: 'Department', cols: ['id', 'church_id', 'name', 'category', 'description', 'head_name', 'head_user_id', 'media_upload_enabled', 'allowed_media_types', 'is_active', 'color', 'allowed_features', 'created_by_id', 'createdAt', 'updatedAt'] },
   events: { model: 'event', table: 'Event', cols: ['id', 'church_id', 'title', 'description', 'department_id', 'department_name', 'start_datetime', 'end_datetime', 'location', 'event_type', 'is_public', 'created_by_name', 'created_by_id', 'createdAt', 'updatedAt'] },
-  givings: { model: 'giving', table: 'Giving', cols: ['id', 'church_id', 'member_id', 'member_name', 'date', 'amount', 'type', 'payment_method', 'service_or_event', 'notes', 'recorded_by', 'created_by_id', 'createdAt', 'updatedAt'] },
+  givings: { model: 'giving', table: 'Giving', cols: ['id', 'church_id', 'member_id', 'member_name', 'giver_type', 'source_id', 'date', 'amount', 'type', 'payment_method', 'service_or_event', 'notes', 'recorded_by', 'created_by_id', 'createdAt', 'updatedAt'] },
   expenditures: { model: 'expenditure', table: 'Expenditure', cols: ['id', 'church_id', 'date', 'category', 'description', 'amount', 'department_id', 'department_name', 'approval_status', 'approved_by', 'approved_date', 'receipt_url', 'receipt_key', 'notes', 'created_by_id', 'createdAt', 'updatedAt'] },
   attendances: { model: 'attendance', table: 'Attendance', cols: ['id', 'church_id', 'event_id', 'event_name', 'event_date', 'member_id', 'member_name', 'department_id', 'department_name', 'check_in_time', 'status', 'checked_in_by', 'notes', 'created_by_id', 'createdAt', 'updatedAt'] },
   sermons: { model: 'sermon', table: 'Sermon', cols: ['id', 'church_id', 'title', 'description', 'preacher', 'date', 'department_id', 'department_name', 'media_type', 'file_url', 'thumbnail_url', 'duration_minutes', 'tags', 'created_by_id', 'createdAt', 'updatedAt'] },

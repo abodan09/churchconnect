@@ -112,6 +112,7 @@ model Department {
   id                   String   @id @default(cuid())
   church_id            String
   name                 String
+  category             String?  @default("department") // department | ministry
   description          String?
   head_name            String?
   head_user_id         String?
@@ -156,8 +157,10 @@ model Event {
 model Giving {
   id               String   @id @default(cuid())
   church_id        String
-  member_id        String
-  member_name      String?
+  member_id        String // "" when the giver is not a member (church/department/ministry)
+  member_name      String? // display name of the giver, whatever its type
+  giver_type       String?  @default("member") // member | church | department | ministry
+  source_id        String? // Department id when giver_type is department/ministry
   date             String
   amount           Float
   type             String   @default("tithe")

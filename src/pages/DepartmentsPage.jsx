@@ -7,14 +7,16 @@ import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Badge } from "@/components/ui/badge";
-import { Plus, Edit, Trash2, Layers, Mic2, Video, Music, Users, UserCog, X } from "lucide-react";
+import { Plus, Edit, Trash2, Layers, Mic2, Video, Music, Users, X } from "lucide-react";
 import { useOutletContext } from "react-router-dom";
 
 const EMPTY = {
-  name: "", description: "", head_name: "", head_user_id: "", color: "#6366f1",
+  name: "", category: "department", description: "", head_name: "", head_user_id: "", color: "#6366f1",
   media_upload_enabled: false, allowed_media_types: "none", is_active: true, allowed_features: "",
 };
+
+// Legacy rows (created before the category field) count as "department".
+const deptCategory = (d) => (d?.category === "ministry" ? "ministry" : "department");
 
 const MEDIA_OPTS = [
   { value: "audio", label: "Audio only" },
@@ -80,6 +82,7 @@ export default function DepartmentsPage() {
   function openEdit(d) {
     setForm({
       name: d.name || "",
+      category: deptCategory(d),
       description: d.description || "",
       head_name: d.head_name || "",
       head_user_id: d.head_user_id || "",
@@ -171,7 +174,9 @@ export default function DepartmentsPage() {
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold">Departments</h1>
-          <p className="text-muted-foreground text-sm">{departments.length} departments</p>
+          <p className="text-muted-foreground text-sm">
+            {departments.filter(d => deptCategory(d) === "department").length} departments · {departments.filter(d => deptCategory(d) === "ministry").length} ministries
+          </p>
         </div>
         {isSuperAdmin && (
           <Button onClick={openNew} className="bg-primary text-primary-foreground gap-2">
@@ -198,9 +203,14 @@ export default function DepartmentsPage() {
                     <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1"><Users className="w-3 h-3" />{memberCount} members</p>
                   </div>
                 </div>
-                <span className={`px-2 py-0.5 rounded-full text-xs font-medium flex-shrink-0 ${dept.is_active ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
-                  {dept.is_active ? "Active" : "Inactive"}
-                </span>
+                <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                  <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${dept.is_active ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
+                    {dept.is_active ? "Active" : "Inactive"}
+                  </span>
+                  {deptCategory(dept) === "ministry" && (
+                    <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-700">Ministry</span>
+                  )}
+                </div>
               </div>
 
               {/* Enabled features */}
@@ -266,8 +276,21 @@ export default function DepartmentsPage() {
             {/* ── Info & Head ── */}
             <TabsContent value="info" className="space-y-4 mt-4">
               <div>
-                <Label>Department Name *</Label>
+                <Label>Name *</Label>
                 <Input value={form.name} onChange={e => f("name", e.target.value)} className="mt-1" />
+              </div>
+              <div>
+                <Label>Category</Label>
+                <Select value={form.category || "department"} onValueChange={v => f("category", v)}>
+                  <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="department">Department</SelectItem>
+                    <SelectItem value="ministry">Ministry</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Ministries are listed separately when recording giving (Giver → Ministry).
+                </p>
               </div>
               <div>
                 <Label>Description</Label>

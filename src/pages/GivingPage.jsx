@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { entities } from "@/api/client";
 import { useAuth } from "@/lib/ClerkAuthContext";
+import { useChurchSettings } from "@/lib/ChurchSettingsContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -10,14 +11,19 @@ import { Plus, Search, Edit, Trash2, HandCoins } from "lucide-react";
 import StatCard from "@/components/StatCard";
 import { TrendingUp } from "lucide-react";
 
-const EMPTY = { member_id: "", member_name: "", date: "", amount: "", type: "tithe", payment_method: "cash", service_or_event: "", notes: "" };
+const EMPTY = { member_id: "", member_name: "", giver_type: "member", source_id: "", date: "", amount: "", type: "tithe", payment_method: "cash", service_or_event: "", notes: "" };
 const TYPE_LABEL = { tithe: "Tithe", offering: "Offering", welfare: "Welfare", special_offering: "Special Offering", thanksgiving: "Thanksgiving", building_fund: "Building Fund" };
 const TYPE_COLOR = { tithe: "bg-green-100 text-green-700", offering: "bg-blue-100 text-blue-700", welfare: "bg-teal-100 text-teal-700", special_offering: "bg-purple-100 text-purple-700", thanksgiving: "bg-amber-100 text-amber-700", building_fund: "bg-red-100 text-red-700" };
+const GIVER_TYPES = [["member", "Member"], ["church", "Church"], ["department", "Departmental"], ["ministry", "Ministry"]];
+// Legacy departments (created before the category field) count as "department".
+const deptCategory = (d) => (d?.category === "ministry" ? "ministry" : "department");
 
 export default function GivingPage() {
   const { user } = useAuth();
+  const { fmt: fmtCtx, settings } = useChurchSettings() || {};
   const [giving, setGiving] = useState([]);
   const [members, setMembers] = useState([]);
+  const [departments, setDepartments] = useState([]);
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState("all");
   const [open, setOpen] = useState(false);
@@ -29,19 +35,44 @@ export default function GivingPage() {
   useEffect(() => { loadData(); }, []);
 
   async function loadData() {
-    const [g, m] = await Promise.all([entities.Giving.list("-date", 500), entities.Member.list("-created_date", 500)]);
-    setGiving(g); setMembers(m); setLoading(false);
+    const [g, m, d] = await Promise.all([
+      entities.Giving.list("-date", 500),
+      entities.Member.list("-created_date", 500),
+      entities.Department.filter({ is_active: true }),
+    ]);
+    setGiving(g); setMembers(m); setDepartments(d); setLoading(false);
   }
 
   function openNew() { setForm(EMPTY); setEditId(null); setMemberSearch(""); setOpen(true); }
-  function openEdit(g) { setForm({ ...g, amount: String(g.amount) }); setEditId(g.id); setMemberSearch(g.member_name || ""); setOpen(true); }
+  function openEdit(g) {
+    setForm({ ...EMPTY, ...g, amount: String(g.amount), giver_type: g.giver_type || "member", source_id: g.source_id || "" });
+    setEditId(g.id);
+    setMemberSearch((g.giver_type || "member") === "member" ? (g.member_name || "") : "");
+    setOpen(true);
+  }
 
   function selectMember(m) {
     setForm(p => ({ ...p, member_id: m.id, member_name: `${m.first_name} ${m.last_name}` }));
     setMemberSearch(`${m.first_name} ${m.last_name}`);
   }
 
+  // Switching the giver type resets who/what the record points at.
+  function changeGiverType(v) {
+    setMemberSearch("");
+    setForm(p => ({ ...p, giver_type: v, member_id: "", source_id: "", member_name: v === "church" ? "Church" : "" }));
+  }
+
+  function selectSource(id) {
+    const d = departments.find(x => x.id === id);
+    if (d) setForm(p => ({ ...p, source_id: d.id, member_name: d.name }));
+  }
+
+  const needsSource = form.giver_type === "department" || form.giver_type === "ministry";
+  const sourceOptions = departments.filter(d => deptCategory(d) === form.giver_type);
+
   async function handleSave() {
+    if (form.giver_type === "member" && !form.member_id) { alert("Select a member for this record."); return; }
+    if (needsSource && !form.source_id) { alert(`Select a ${form.giver_type === "ministry" ? "ministry" : "department"} for this record.`); return; }
     const data = { ...form, amount: parseFloat(form.amount) || 0, recorded_by: user?.full_name };
     if (editId) await entities.Giving.update(editId, data);
     else await entities.Giving.create(data);
@@ -58,7 +89,8 @@ export default function GivingPage() {
     return match && matchType;
   });
 
-  const fmt = n => `€${Number(n || 0).toLocaleString("en", { minimumFractionDigits: 2 })}`;
+  const fmt = fmtCtx || (n => `${settings?.currency_symbol || "€"}${Number(n || 0).toLocaleString("en", { minimumFractionDigits: 2 })}`);
+  const currencyCode = settings?.currency_code || "EUR";
   const total = filtered.reduce((s, g) => s + (g.amount || 0), 0);
   const tithes = giving.filter(g => g.type === "tithe").reduce((s, g) => s + (g.amount || 0), 0);
   const offerings = giving.filter(g => g.type === "offering").reduce((s, g) => s + (g.amount || 0), 0);
@@ -83,7 +115,7 @@ export default function GivingPage() {
       <div className="flex flex-wrap gap-3">
         <div className="relative flex-1 min-w-48">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <Input className="pl-9" placeholder="Search by member..." value={search} onChange={e => setSearch(e.target.value)} />
+          <Input className="pl-9" placeholder="Search by giver..." value={search} onChange={e => setSearch(e.target.value)} />
         </div>
         <Select value={typeFilter} onValueChange={setTypeFilter}>
           <SelectTrigger className="w-44"><SelectValue placeholder="Type" /></SelectTrigger>
@@ -98,12 +130,17 @@ export default function GivingPage() {
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-muted/50 border-b border-border">
-              <tr>{["Member","Date","Amount","Type","Method","Service/Event","Recorded By"].map(h => <th key={h} className="text-left px-4 py-3 font-semibold text-muted-foreground text-xs uppercase tracking-wide">{h}</th>)}<th className="px-4 py-3"></th></tr>
+              <tr>{["Giver","Date","Amount","Type","Method","Service/Event","Recorded By"].map(h => <th key={h} className="text-left px-4 py-3 font-semibold text-muted-foreground text-xs uppercase tracking-wide">{h}</th>)}<th className="px-4 py-3"></th></tr>
             </thead>
             <tbody>
               {filtered.map((g, i) => (
                 <tr key={g.id} className={`border-b border-border last:border-0 hover:bg-muted/20 ${i%2===0?"":"bg-muted/10"}`}>
-                  <td className="px-4 py-3 font-medium">{g.member_name}</td>
+                  <td className="px-4 py-3 font-medium">
+                    {g.member_name}
+                    {(g.giver_type === "department" || g.giver_type === "ministry") && (
+                      <span className="ml-1.5 text-xs text-muted-foreground capitalize">({g.giver_type})</span>
+                    )}
+                  </td>
                   <td className="px-4 py-3 text-muted-foreground">{g.date}</td>
                   <td className="px-4 py-3 font-semibold text-primary">{fmt(g.amount)}</td>
                   <td className="px-4 py-3"><span className={`px-2 py-0.5 rounded-full text-xs font-medium ${TYPE_COLOR[g.type]||"bg-gray-100 text-gray-700"}`}>{TYPE_LABEL[g.type]||g.type}</span></td>
@@ -126,20 +163,39 @@ export default function GivingPage() {
         <DialogContent className="max-w-md">
           <DialogHeader><DialogTitle>{editId ? "Edit" : "Record"} Giving</DialogTitle></DialogHeader>
           <div className="space-y-3 mt-2">
-            <div className="relative">
-              <Label>Member</Label>
-              <Input value={memberSearch} onChange={e => setMemberSearch(e.target.value)} placeholder="Search member..." className="mt-1" />
-              {memberSearch && !form.member_id && filteredMembers.length > 0 && (
-                <div className="absolute z-10 bg-white border border-border rounded-lg mt-1 w-full shadow-lg">
-                  {filteredMembers.map(m => (
-                    <button key={m.id} onClick={() => selectMember(m)} className="w-full text-left px-3 py-2 text-sm hover:bg-muted">{m.first_name} {m.last_name}</button>
-                  ))}
-                </div>
-              )}
+            <div><Label>Giver</Label>
+              <Select value={form.giver_type} onValueChange={changeGiverType}>
+                <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                <SelectContent>{GIVER_TYPES.map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}</SelectContent>
+              </Select>
             </div>
+            <div><Label className={needsSource ? "" : "text-muted-foreground"}>{form.giver_type === "ministry" ? "Ministry" : "Department"}</Label>
+              <Select value={form.source_id} onValueChange={selectSource} disabled={!needsSource}>
+                <SelectTrigger className="mt-1"><SelectValue placeholder={needsSource ? `Select ${form.giver_type === "ministry" ? "ministry" : "department"}...` : "—"} /></SelectTrigger>
+                <SelectContent>
+                  {sourceOptions.map(d => <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>)}
+                  {needsSource && sourceOptions.length === 0 && (
+                    <SelectItem value="__none__" disabled>No {form.giver_type === "ministry" ? "ministries" : "departments"} yet — create one on the Departments page</SelectItem>
+                  )}
+                </SelectContent>
+              </Select>
+            </div>
+            {form.giver_type === "member" && (
+              <div className="relative">
+                <Label>Member</Label>
+                <Input value={memberSearch} onChange={e => { setMemberSearch(e.target.value); setForm(p => ({ ...p, member_id: "", member_name: "" })); }} placeholder="Search member..." className="mt-1" />
+                {memberSearch && !form.member_id && filteredMembers.length > 0 && (
+                  <div className="absolute z-10 bg-white border border-border rounded-lg mt-1 w-full shadow-lg">
+                    {filteredMembers.map(m => (
+                      <button key={m.id} onClick={() => selectMember(m)} className="w-full text-left px-3 py-2 text-sm hover:bg-muted">{m.first_name} {m.last_name}</button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
             <div className="grid grid-cols-2 gap-3">
               <div><Label>Date</Label><Input type="date" value={form.date} onChange={e => setForm(p=>({...p,date:e.target.value}))} className="mt-1" /></div>
-              <div><Label>Amount (GHS)</Label><Input type="number" value={form.amount} onChange={e => setForm(p=>({...p,amount:e.target.value}))} className="mt-1" /></div>
+              <div><Label>Amount ({currencyCode})</Label><Input type="number" value={form.amount} onChange={e => setForm(p=>({...p,amount:e.target.value}))} className="mt-1" /></div>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div><Label>Type</Label>
