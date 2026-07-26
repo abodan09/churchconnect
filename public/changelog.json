@@ -1,5 +1,19 @@
 [
   {
+    "version": "1.11.0",
+    "date": "2026-07-26",
+    "title": "Giving Sources, Custom Categories & Date-Range Reports",
+    "features": [
+      "Record giving from more than members — choose Member, Church, Departmental or Ministry as the giver, then pick the exact department or ministry from a list",
+      "Mark any department as a Ministry on the Departments page — ministries get their own list when recording giving",
+      "Create your own expenditure categories — choose 'Add / New Category' in the category dropdown and type a name",
+      "Financial Reports now cover any date range you choose (From and To dates), not just a whole month — on screen, in the PDF and in emailed reports"
+    ],
+    "fixes": [
+      "Your chosen currency now applies everywhere — Giving, Expenditures, Properties and My Portal no longer show a hard-coded currency when your church uses a different one"
+    ]
+  },
+  {
     "version": "1.10.0",
     "date": "2026-07-25",
     "title": "Movable AI Assistant + Update Preview",
