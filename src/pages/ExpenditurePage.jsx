@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { entities, uploadReceipt, getReceiptUrl } from "@/api/client";
 import { useAuth } from "@/lib/ClerkAuthContext";
+import { useChurchSettings } from "@/lib/ChurchSettingsContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -16,11 +17,13 @@ const FINANCE_ROLES = ["finance_officer", "pastor_admin", "super_admin"];
 // so an unsupported/oversize file is rejected here instead of silently failing to sync.
 const RECEIPT_MIME = new Set(["image/jpeg", "image/png", "image/webp", "image/gif", "image/heic", "image/heif", "application/pdf"]);
 const RECEIPT_MAX = 25 * 1024 * 1024;
-const CATS = ["utilities","salaries","maintenance","outreach","events","equipment","welfare","administration","other"];
+const BASE_CATS = ["utilities","salaries","maintenance","outreach","events","equipment","welfare","administration"];
+const ADD_NEW = "__add_new__"; // sentinel Select value that reveals the new-category text field
 const STATUS_COLOR = { pending: "bg-amber-100 text-amber-700", approved: "bg-green-100 text-green-700", rejected: "bg-red-100 text-red-700" };
 
 export default function ExpenditurePage() {
   const { user } = useAuth();
+  const { fmt: fmtCtx, settings } = useChurchSettings() || {};
   const [expenditures, setExpenditures] = useState([]);
   const [departments, setDepartments] = useState([]);
   const [search, setSearch] = useState("");
@@ -28,6 +31,7 @@ export default function ExpenditurePage() {
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState(EMPTY);
   const [editId, setEditId] = useState(null);
+  const [newCat, setNewCat] = useState(""); // typed name when "Add / New Category" is chosen
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [receiptDirty, setReceiptDirty] = useState(false); // freshly uploaded, not yet saved
@@ -41,12 +45,18 @@ export default function ExpenditurePage() {
     setExpenditures(e); setDepartments(d); setLoading(false);
   }
 
-  function openNew() { setForm(EMPTY); setEditId(null); setReceiptDirty(false); setOpen(true); }
-  function openEdit(e) { setForm({ ...e, amount: String(e.amount) }); setEditId(e.id); setReceiptDirty(false); setOpen(true); }
+  function openNew() { setForm(EMPTY); setEditId(null); setNewCat(""); setReceiptDirty(false); setOpen(true); }
+  function openEdit(e) { setForm({ ...e, amount: String(e.amount) }); setEditId(e.id); setNewCat(""); setReceiptDirty(false); setOpen(true); }
+
+  // Fixed categories plus every category already used by a record, so custom
+  // categories keep appearing (and re-selectable) after they're first created.
+  const catOptions = [...new Set([...BASE_CATS, ...expenditures.map(e => (e.category || "").trim().toLowerCase()).filter(Boolean)])];
 
   async function handleSave() {
+    const category = form.category === ADD_NEW ? newCat.trim().toLowerCase() : form.category;
+    if (!category || category === ADD_NEW) { alert("Enter a name for the new category."); return; }
     const dept = departments.find(d => d.id === form.department_id);
-    const data = { ...form, amount: parseFloat(form.amount) || 0, department_name: dept?.name || form.department_name };
+    const data = { ...form, category, amount: parseFloat(form.amount) || 0, department_name: dept?.name || form.department_name };
     if (editId) await entities.Expenditure.update(editId, data);
     else await entities.Expenditure.create({ ...data, approval_status: "pending" });
     setOpen(false); loadData();
@@ -111,7 +121,8 @@ export default function ExpenditurePage() {
     return match && matchStatus;
   });
 
-  const fmt = n => `€${Number(n||0).toLocaleString("en",{minimumFractionDigits:2})}`;
+  const fmt = fmtCtx || (n => `${settings?.currency_symbol || "€"}${Number(n||0).toLocaleString("en",{minimumFractionDigits:2})}`);
+  const currencyCode = settings?.currency_code || "EUR";
   const approved = expenditures.filter(e=>e.approval_status==="approved").reduce((s,e)=>s+(e.amount||0),0);
   const pending = expenditures.filter(e=>e.approval_status==="pending").reduce((s,e)=>s+(e.amount||0),0);
 
@@ -185,13 +196,19 @@ export default function ExpenditurePage() {
           <DialogHeader><DialogTitle>{editId?"Edit":"Add"} Expenditure</DialogTitle></DialogHeader>
           <div className="grid grid-cols-2 gap-3 mt-2">
             <div><Label>Date</Label><Input type="date" value={form.date} onChange={e=>setForm(p=>({...p,date:e.target.value}))} className="mt-1" /></div>
-            <div><Label>Amount (GHS)</Label><Input type="number" value={form.amount} onChange={e=>setForm(p=>({...p,amount:e.target.value}))} className="mt-1" /></div>
+            <div><Label>Amount ({currencyCode})</Label><Input type="number" value={form.amount} onChange={e=>setForm(p=>({...p,amount:e.target.value}))} className="mt-1" /></div>
             <div className="col-span-2"><Label>Description</Label><Input value={form.description} onChange={e=>setForm(p=>({...p,description:e.target.value}))} className="mt-1" /></div>
             <div><Label>Category</Label>
               <Select value={form.category} onValueChange={v=>setForm(p=>({...p,category:v}))}>
                 <SelectTrigger className="mt-1"><SelectValue placeholder="Select..." /></SelectTrigger>
-                <SelectContent>{CATS.map(c=><SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
+                <SelectContent>
+                  {catOptions.map(c=><SelectItem key={c} value={c}><span className="capitalize">{c}</span></SelectItem>)}
+                  <SelectItem value={ADD_NEW}><span className="text-primary font-medium">+ Add / New Category</span></SelectItem>
+                </SelectContent>
               </Select>
+              {form.category === ADD_NEW && (
+                <Input value={newCat} onChange={e=>setNewCat(e.target.value)} placeholder="New category name" autoFocus className="mt-2" />
+              )}
             </div>
             <div><Label>Department</Label>
               <Select value={form.department_id} onValueChange={v=>setForm(p=>({...p,department_id:v}))}>
